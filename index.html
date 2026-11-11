@@ -220,7 +220,7 @@ async function jobTab(){
   const o=(a,f)=>a.map(f).join("");
   const list=JOBS.map(j=>{const done=j.status=="tamamlandi",st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq);
     const asg=done?`<span class="k">${esc(dn[j.driver_id]||"şoför yok")} · ${esc(pv[j.vehicle_id]||"araç yok")}</span>`:`<select class="sm" aria-label="Araç" onchange="setJobVeh('${j.id}',this.value)"><option value="">Araç seç</option>${o(VEH,x=>`<option value="${x.id}" ${x.id==j.vehicle_id?"selected":""}>${esc(vl(x))}</option>`)}</select> <select class="sm" aria-label="Şoför" onchange="setJobDrv('${j.id}',this.value)"><option value="">Şoför seç</option>${o(DRV,x=>`<option value="${x.id}" ${x.id==j.driver_id?"selected":""}>${esc(x.name)}</option>`)}</select>`;
-    return `<div class="veh"><div><b>${esc(j.from_city||"?")} → ${esc(j.to_city||"?")}</b><br><span class="k">${j.job_date.slice(8)+"."+j.job_date.slice(5,7)}${j.pickup_time?" "+hh(j.pickup_time):""}${j.job_type?" · "+TL[j.job_type]:""}${j.pax?" · "+j.pax+" kişi":""}${j.guest_name?" · "+esc(j.guest_name):""}</span><br><span class="k">${j.run_code?"iş kodu "+esc(j.run_code)+" · ":""}${j.vehicle_type?esc(j.vehicle_type)+" · ":""}${j.flight_no?esc(j.flight_no)+" "+hh(j.flight_time)+" · ":""}${esc(an[j.agency_id]||"acenta yok")}${j.guide_name?" · rehber "+esc(j.guide_name):""}</span><br>${asg}${capW(j.pax,j.vehicle_id)?`<br><span class="neg">${esc(capW(j.pax,j.vehicle_id))}</span>`:""}<br>${(e=>!e?"":e.miss?`<span class="tag">bitiş hesaplanamadı: ${esc(e.miss)} süresi tanımsız</span><br>`:`<span class="k">${e.m?"bitiş (elle)":"tahmini bitiş"} <b>${esc(e.t)}</b></span><br>`)(estEnd(j))}${Number(j.amount)?`<b>${fc(j.amount,j.currency)}</b>`:'<span class="tag">fiyat girilmedi</span>'} <span class="tag">${CM[j.collection_mode]||""}</span>${j.invoiced?"":'<span class="tag">faturasız</span>'}${j.partner_share>0?`<span class="k">pay ${fc(j.partner_share,j.currency)} → ${esc(an[j.partner_agency_id]||"?")}</span>`:""}${j.notes?`<br><span class="warn">${esc(j.notes)}</span>`:""}${st.length?`<details><summary>${st.length} durak</summary>${st.map(s=>`<div class="stop"><b>${hh(s.pickup_time)||"–"}</b> ${esc(s.place||"")} <span class="k">${esc(s.region||"")} · ${s.pax} kişi${s.operator?" · "+esc(s.operator):""}</span>${s.note?`<br><span class="warn">${esc(s.note)}</span>`:""}</div>`).join("")}</details>`:""}</div><div>${done?`<span class="ok">✓ Bitti</span><button class="x n" onclick="undoJob('${j.id}')">Geri al</button>`:`<a class="lk" href="${esc(waLink(j))}" target="_blank" rel="noopener">Şoföre gönder</a><button class="x n" onclick="doneJob('${j.id}')">Tamamla</button><button class="x n" onclick="setAmt('${j.id}')">Fiyat gir</button><button class="x n" onclick="setEnd('${j.id}')">Bitişi düzelt</button>`}<button class="x" onclick="delJob('${j.id}')">İşi sil</button></div></div>`}).join("")||`<p class="sub">${JF=="acik"?"Açık iş yok.":"Henüz iş yok."}</p>`;
+    return `<div class="veh"><div><b>${esc(j.from_city||"?")} → ${esc(j.to_city||"?")}</b><br><span class="k">${j.job_date.slice(8)+"."+j.job_date.slice(5,7)}${j.pickup_time?" "+hh(j.pickup_time):""}${j.job_type?" · "+TL[j.job_type]:""}${j.pax?" · "+j.pax+" kişi":""}${j.guest_name?" · "+esc(j.guest_name):""}</span><br><span class="k">${j.run_code?"iş kodu "+esc(j.run_code)+" · ":""}${j.vehicle_type?esc(j.vehicle_type)+" · ":""}${j.flight_no?esc(j.flight_no)+" "+hh(j.flight_time)+" · ":""}${esc(an[j.agency_id]||"acenta yok")}${j.guide_name?" · rehber "+esc(j.guide_name):""}</span><br>${asg}${capW(j.pax,j.vehicle_id)?`<br><span class="neg">${esc(capW(j.pax,j.vehicle_id))}</span>`:""}<br>${(e=>!e?"":e.miss?`<span class="tag">bitiş hesaplanamadı: ${esc(e.miss)} süresi tanımsız</span><br>`:`<span class="k">${e.m?"bitiş (elle)":"tahmini bitiş"} <b>${esc(e.t)}</b></span><br>`)(estEnd(j))}${Number(j.amount)?`<b>${fc(j.amount,j.currency)}</b>`:'<span class="tag">fiyat girilmedi</span>'} <span class="tag">${CM[j.collection_mode]||""}</span>${j.invoiced?"":'<span class="tag">faturasız</span>'}${j.partner_share>0?`<span class="k">pay ${fc(j.partner_share,j.currency)} → ${esc(an[j.partner_agency_id]||"?")}</span>`:""}${j.notes?`<br><span class="warn">${esc(j.notes)}</span>`:""}${st.length?`<details><summary>${st.length} durak</summary>${st.map(s=>`<div class="stop"><b>${hh(s.pickup_time)||"–"}</b> ${esc(s.place||"")} <span class="k">${esc(s.region||"")} · ${s.pax} kişi${s.operator?" · "+esc(s.operator):""}</span>${s.note?`<br><span class="warn">${esc(s.note)}</span>`:""}</div>`).join("")}</details>`:""}</div><div>${done?`<span class="ok">✓ Bitti</span><button class="x n" onclick="undoJob('${j.id}')">Geri al</button>`:`<a class="lk" href="${esc(waLink(j))}" target="_blank" rel="noopener">Mesaj gönder</a><button class="x n" onclick="sharePdf('${j.id}')">PDF gönder</button><button class="x n" onclick="doneJob('${j.id}')">Tamamla</button><button class="x n" onclick="setAmt('${j.id}')">Fiyat gir</button><button class="x n" onclick="setEnd('${j.id}')">Bitişi düzelt</button>`}<button class="x" onclick="delJob('${j.id}')">İşi sil</button></div></div>`}).join("")||`<p class="sub">${JF=="acik"?"Açık iş yok.":"Henüz iş yok."}</p>`;
   const fl=FLASH;FLASH="";
   $("#tab").innerHTML=`<div class="card"><h2>İşler</h2>${(n=>n?`<p class="sub neg">${n} işte araç kapasitesi aşılıyor.</p>`:"")(JOBS.filter(j=>j.status!="tamamlandi"&&capW(j.pax,j.vehicle_id)).length)}<div class="tabs"><button class="${JF=="acik"?"":"alt"}" onclick="JF='acik';vehiclesView('j')">Açık işler</button><button class="${JF=="tum"?"":"alt"}" onclick="JF='tum';vehiclesView('j')">Tümü (son 100)</button></div>${list}</div>
   <h2 style="margin:16px 0 8px">İş ekle</h2>
@@ -246,7 +246,7 @@ function parseTransferList(pages){
   const dIso=s=>{const m=s.match(/(\d\d)\/(\d\d)\/(\d{2,4})/);return m?(m[3].length==2?"20"+m[3]:m[3])+"-"+m[2]+"-"+m[1]:null};
   const at=(row,a,b)=>row.filter(i=>i.x>=a&&i.x<b).map(i=>i.s.trim()).join(" ").trim();
   for(const items of pages){
-    const rows=[];
+    pax=null;const rows=[];
     for(const it of items.slice().sort((a,b)=>b.y-a.y||a.x-b.x)){const r=rows[rows.length-1];if(r&&Math.abs(r.y-it.y)<=2.5)r.it.push(it);else rows.push({y:it.y,it:[it]})}
     rows.forEach(r=>r.it.sort((a,b)=>a.x-b.x));
     const ti=rows.findIndex(r=>r.it.some(i=>/TRANSFER L[İI]STES[İI]/i.test(i.s)));
@@ -398,6 +398,52 @@ function waText(j){
   return L.join("\n");
 }
 function waLink(j){const d=DRV.find(x=>x.id==j.driver_id);let p=d&&d.phone?String(d.phone).replace(/\D/g,""):"";if(/^0?5\d{9}$/.test(p))p="90"+p.replace(/^0/,"");return "https://wa.me/"+p+"?text="+encodeURIComponent(waText(j))}
+function jobCard(j){
+  const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq),v=VEH.find(x=>x.id==j.vehicle_id),d=DRV.find(x=>x.id==j.driver_id),tot=st.reduce((s,x)=>s+(x.job_passengers||[]).length,0);
+  const W=1240,P=64,HD=190,F=(s,w)=>`${w||400} ${s}px -apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif`,it=[],add=(t,f,c,g)=>{if(t)it.push({t:String(t),f,c,g:g||0})};
+  add(`${j.from_city||"?"} → ${j.to_city||"?"}`,F(46,700),"#16202b",14);
+  if(j.flight_no)add(`Uçuş: ${j.flight_no} ${h5(j.flight_time)}`,F(34),"#16202b",6);
+  add([v?"Araç: "+v.plate:"",d?"Şoför: "+d.name:"",j.pax?"Toplam: "+j.pax+" kişi":""].filter(Boolean).join("   ·   "),F(34),"#16202b",6);
+  if(j.guest_name)add("Misafir: "+j.guest_name,F(34),"#16202b",6);
+  if(it.length)it[it.length-1].g=34;
+  st.forEach(s=>{add(`${h5(s.pickup_time)||"–"}   ${s.place||""}`,F(40,700),"#0d6b5c",4);add(`${s.region?s.region+" · ":""}${s.pax} kişi`,F(30),"#5b6776",6);
+    const n=(s.job_passengers||[]).map(p=>p.full_name);if(n.length&&tot<=60)add(n.join(", "),F(28),"#16202b",6);
+    if(s.note)add("Not: "+s.note,F(32,700),"#a85400",6);it[it.length-1].g=30});
+  if(!st.length&&j.notes)add(j.notes,F(30),"#16202b",24);
+  if(j.collection_mode=="sofor_nakit"&&Number(j.amount))add("Misafirden alınacak: "+Number(j.amount).toLocaleString("tr-TR")+" "+j.currency,F(40,700),"#b83a2b",10);
+  const c=document.createElement("canvas");let x=c.getContext("2d");
+  const wrap=(t,f)=>{x.font=f;const o=[];t.split("\n").forEach(par=>{let l="";par.split(" ").forEach(w=>{const n=l?l+" "+w:w;if(l&&x.measureText(n).width>W-2*P){o.push(l);l=w}else l=n});o.push(l)});return o};
+  let H=HD+48;const lay=it.map(i=>{const ls=wrap(i.t,i.f),lh=Math.round(parseInt(i.f.match(/(\d+)px/)[1])*1.34),y=H;H+=ls.length*lh+i.g;return{f:i.f,c:i.c,ls,lh,y}});H+=96;
+  c.width=W;c.height=H;x=c.getContext("2d");x.textBaseline="top";
+  x.fillStyle="#ffffff";x.fillRect(0,0,W,H);x.fillStyle="#0d6b5c";x.fillRect(0,0,W,HD);
+  x.fillStyle="#ffffff";x.font=F(56,700);x.fillText(`${TLN[j.job_type]||"İş"}  ·  ${j.job_date.slice(8)}.${j.job_date.slice(5,7)}.${j.job_date.slice(0,4)}${j.pickup_time?"  ·  "+h5(j.pickup_time):""}`,P,40);
+  x.font=F(32);x.fillText(`${co.name||""}${j.run_code?"   ·   iş kodu "+j.run_code:""}`,P,118);
+  lay.forEach(i=>{x.font=i.f;x.fillStyle=i.c;i.ls.forEach((l,k)=>x.fillText(l,P,i.y+k*i.lh))});
+  x.fillStyle="#d9dfe6";x.fillRect(P,H-78,W-2*P,2);x.fillStyle="#5b6776";x.font=F(24);x.fillText("Saatler ve kişi sayıları acenta listesine göredir.",P,H-58);
+  return c;
+}
+function pdfFromJpeg(jpg,w,h){
+  const pw=595,ph=Math.round(h*595/w),E=new TextEncoder(),parts=[],off=[];let pos=0;
+  const put=b=>{if(typeof b=="string")b=E.encode(b);parts.push(b);pos+=b.length},obj=(n,head,bin)=>{off[n]=pos;put(n+" 0 obj\n"+head);if(bin){put("\nstream\n");put(bin);put("\nendstream")}put("\nendobj\n")};
+  put("%PDF-1.4\n");
+  obj(1,"<< /Type /Catalog /Pages 2 0 R >>");obj(2,"<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  obj(3,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`);
+  obj(4,`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>`,jpg);
+  const cs=E.encode(`q ${pw} 0 0 ${ph} 0 0 cm /Im0 Do Q`);obj(5,`<< /Length ${cs.length} >>`,cs);
+  const xr=pos;let t="xref\n0 6\n0000000000 65535 f \n";for(let i=1;i<=5;i++)t+=String(off[i]).padStart(10,"0")+" 00000 n \n";
+  put(t+`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xr}\n%%EOF\n`);
+  return new Blob(parts,{type:"application/pdf"});
+}
+async function sharePdf(id){
+  const j=JOBS.find(x=>x.id==id);if(!j)return;
+  try{
+    const c=jobCard(j),jb=await new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(new Error("Görsel oluşturulamadı")),"image/jpeg",0.92)),pdf=pdfFromJpeg(new Uint8Array(await jb.arrayBuffer()),c.width,c.height);
+    const name=("is-"+j.job_date+"-"+(j.run_code||h5(j.pickup_time)||"fis")).replace(/[^\w-]+/g,"")+".pdf",f=new File([pdf],name,{type:"application/pdf"});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:"İş fişi"});return}catch(e){if(e&&e.name=="AbortError")return}}
+    const a=document.createElement("a");a.href=URL.createObjectURL(pdf);a.download=name;document.body.appendChild(a);a.click();a.remove();
+    say("PDF indirildi. WhatsApp'ta belge olarak ekleyip gönderebilirsin");
+  }catch(e){say("PDF hazırlanamadı: "+errText(e),true)}
+}
 let PD="";
 function planDay(d){const x=new Date((PD||today())+"T12:00:00Z");x.setUTCDate(x.getUTCDate()+d);PD=x.toISOString().slice(0,10);vehiclesView("o")}
 async function planTab(){
