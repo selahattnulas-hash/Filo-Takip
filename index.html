@@ -213,6 +213,7 @@ async function jobTab(){
     return `<div class="veh"><div><b>${esc(j.from_city||"?")} → ${esc(j.to_city||"?")}</b><br><span class="k">${j.job_date.slice(8)+"."+j.job_date.slice(5,7)}${j.pickup_time?" "+hh(j.pickup_time):""}${j.job_type?" · "+TL[j.job_type]:""}${j.pax?" · "+j.pax+" kişi":""}${j.guest_name?" · "+esc(j.guest_name):""}</span><br><span class="k">${j.run_code?"iş kodu "+esc(j.run_code)+" · ":""}${j.vehicle_type?esc(j.vehicle_type)+" · ":""}${j.flight_no?esc(j.flight_no)+" "+hh(j.flight_time)+" · ":""}${esc(an[j.agency_id]||"acenta yok")}${j.guide_name?" · rehber "+esc(j.guide_name):""}</span><br>${asg}<br>${(e=>!e?"":e.miss?`<span class="tag">bitiş hesaplanamadı: ${esc(e.miss)} süresi tanımsız</span><br>`:`<span class="k">${e.m?"bitiş (elle)":"tahmini bitiş"} <b>${esc(e.t)}</b></span><br>`)(estEnd(j))}${Number(j.amount)?`<b>${fc(j.amount,j.currency)}</b>`:'<span class="tag">fiyat girilmedi</span>'} <span class="tag">${CM[j.collection_mode]||""}</span>${j.invoiced?"":'<span class="tag">faturasız</span>'}${j.partner_share>0?`<span class="k">pay ${fc(j.partner_share,j.currency)} → ${esc(an[j.partner_agency_id]||"?")}</span>`:""}${j.notes?`<br><span class="warn">${esc(j.notes)}</span>`:""}${st.length?`<details><summary>${st.length} durak</summary>${st.map(s=>`<div class="stop"><b>${hh(s.pickup_time)||"–"}</b> ${esc(s.place||"")} <span class="k">${esc(s.region||"")} · ${s.pax} kişi${s.operator?" · "+esc(s.operator):""}</span>${s.note?`<br><span class="warn">${esc(s.note)}</span>`:""}</div>`).join("")}</details>`:""}</div><div>${done?'<span class="ok">✓ Bitti</span>':`<button class="x" onclick="doneJob('${j.id}')">Tamamlandı</button><button class="x" onclick="setAmt('${j.id}')">Fiyat</button><button class="x" onclick="setEnd('${j.id}')">Bitiş</button>`}<button class="x" onclick="delJob('${j.id}')">Sil</button></div></div>`}).join("")||`<p class="sub">${JF=="acik"?"Açık iş yok.":"Henüz iş yok."}</p>`;
   const fl=FLASH;FLASH="";
   $("#tab").innerHTML=`<div class="card"><h2>Listeden içe aktar (PDF)</h2><p class="sub">Rehber transfer listesi PDF'lerini seç; geliş ve dönüş birlikte seçilebilir. Aynı liste yeniden yüklenirse iş güncellenir, senin yaptığın araç ve şoför ataması korunur.</p><input type="file" id="pf" accept="application/pdf,.pdf" multiple onchange="readLists(this)"><p id="imsg" class="sub ok">${esc(fl)}</p><div id="imp"></div></div>
+  <div class="card"><h2>WhatsApp'tan yapıştır</h2><p class="sub">Mesajı ya da Excel satırlarını kopyalayıp yapıştır. Her satır bir iş olur; okunan bilgileri kaydetmeden önce düzeltebilirsin.</p><textarea id="wt" rows="4" style="width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit" placeholder="17.10.26 05:00 Park Resort Yalıçiftlik - BJV 6 pax vito 60 euro nakit"></textarea><div class="row"><button onclick="readPaste()">Oku</button></div><p id="wmsg" class="sub"></p><div id="wp"></div></div>
   <div class="card"><h2>İş ekle</h2>
   <div class="f2"><div><label>Tarih</label><input id="jd" type="date" value="${today()}"></div><div><label>Saat</label><input id="jh" type="time"></div>
   <div><label>Nereden</label><input id="jf"></div><div><label>Nereye</label><input id="jn"></div>
@@ -226,7 +227,7 @@ async function jobTab(){
   <div class="row"><button onclick="addJob()">İşi kaydet</button></div><p id="msg" class="sub"></p></div>
   <div class="card"><h2>İşler</h2><div class="tabs"><button class="${JF=="acik"?"":"alt"}" onclick="JF='acik';vehiclesView('j')">Açık işler</button><button class="${JF=="tum"?"":"alt"}" onclick="JF='tum';vehiclesView('j')">Tümü (son 100)</button></div>${list}</div>
   <div class="card"><h2>Bölge süreleri</h2><p class="sub">Bölgeden havalimanına sürüş süresi (dakika). Başlangıç değerleri tahmindir, kendi tecrübene göre düzelt. Depar: son alış saati + 5 dk + süre. Varış: uçuş saati + 40 dk çıkış + en uzak bölge + ek otel başına 7 dk.</p>${(()=>{const rs=new Set(Object.keys(RDO));JOBS.forEach(j=>(j.job_stops||[]).forEach(s=>{const k=rk(s.region);if(k)rs.add(k)}));return [...rs].sort().map(k=>`<div class="veh"><div><b>${esc(k)}</b>${RDO[k]?"":RD[k]?' <span class="k">tahmin</span>':' <span class="tag">tanımsız</span>'}</div><input class="sm" style="width:80px" inputmode="numeric" value="${RD[k]||""}" data-r="${esc(k)}" onchange="setRD(this.dataset.r,this.value)"></div>`).join("")||'<p class="sub">Liste içe aktarınca bölgeler burada görünür.</p>'})()}</div>`;
-  if(IMP.length)impView();
+  if(IMP.length)impView();if(PJ.length)pasteView();
 }
 // Rehber Transfer Listesi (PDF) ayrıştırıcı. pages: [[{s,x,y}]]
 function parseTransferList(pages){
@@ -357,6 +358,64 @@ async function setRD(region,val){
   const r=await sb.from("region_durations").upsert({company_id:co.id,region,minutes:Math.round(n),updated_at:new Date().toISOString()},{onConflict:"company_id,region"});
   if(r.error){alert(r.error.message);return}await vehiclesView("j");
 }
+let PJ=[];
+function parsePaste(text,now){
+  now=now||new Date();const iso=d=>d.toLocaleDateString("sv-SE",{timeZone:"Europe/Istanbul"}),out=[];let cur=null;
+  const L="A-Za-zÇĞİÖŞÜçğıöşü",W=pat=>new RegExp("(?:^|[^"+L+"])("+pat+")(?!["+L+"])","i"),AIR=W("BJV|DLM|ADB|AYT|havaliman[ıi]|havaalan[ıi]|airport");
+  for(let raw of String(text).split(/\r?\n/)){
+    raw=raw.replace(/^\s*\[?\d{1,2}[./]\d{1,2}[./]\d{2,4}[ ,]+\d{1,2}[:.]\d{2}(:\d{2})?\]?\s*(-\s*)?[^:\n]{1,40}:\s+/,"").trim();
+    if(!raw){cur=null;continue}
+    let s=" "+raw.replace(/\t+|\s\|\s/g,"  ")+" ",j={raw,date:"",time:"",from:"",to:"",pax:"",amount:"",cur:"TRY",mode:"acenta_cari",vtype:"",jtype:"",partner:"",share:"",vid:"",did:""};
+    const take=re=>{const m=s.match(re);if(m)s=s.replace(m[0]," ");return m};
+    let m=take(/(?:^|\s)(\d{1,2})[./](\d{1,2})[./](\d{2,4})(?=\s)/);
+    if(m)j.date=(m[3].length==2?"20"+m[3]:m[3])+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
+    else if(take(/(?:^|\s)yar[ıi]n(?=\s)/i))j.date=iso(new Date(now.getTime()+864e5));
+    else if(take(/(?:^|\s)bug[üu]n(?=\s)/i))j.date=iso(now);
+    else if(m=take(/(?:^|\s)(\d{1,2})\/(\d{1,2})(?=\s)/))j.date=now.getFullYear()+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
+    if(m=take(/(?:^|\s)([01]?\d|2[0-3])[:.]([0-5]\d)(?=\s)/))j.time=m[1].padStart(2,"0")+":"+m[2];
+    if(m=take(/(\d{1,3})\s*(?:pax|px|ki[şs]i|yolcu)(?![A-Za-zÇĞİÖŞÜçğıöşü])/i))j.pax=m[1];
+    const tl=[];let t;while(t=take(/(?:^|\s)(\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d+,\d{2})(?=\s)/))tl.push(t);
+    if(m=take(/(\d[\d.,]*)\s*(€|euro|eur|erou|avro|tl|₺|try|lira|usd|\$|dolar|gbp|£|pound|sterlin)(?![A-Za-zÇĞİÖŞÜçğıöşü])/i)){const c=m[2].toLocaleLowerCase("tr");j.amount=num(m[1]);j.cur=/€|eur|erou|avro/.test(c)?"EUR":/usd|\$|dolar/.test(c)?"USD":/gbp|£|pound|sterlin/.test(c)?"GBP":"TRY";if(tl.length)j.guest=m[1]+" "+j.cur}
+    if(tl.length){j.amount=num(tl[0][1]);j.cur="TRY";if(tl[1]){j.share=num(tl[1][1]);const b=raw.slice(0,raw.lastIndexOf(tl[1][1])).trim().split(/\s+/).pop();if(b&&new RegExp("^["+L+"]{3,}$").test(b))j.partner=b}}
+    if(/nak[iİ]t|al[ıi]nacak|tahsil|cash|elden/i.test(raw))j.mode="sofor_nakit";
+    if(m=take(W("v[iİ]to|sprinter|crafter|m[iİ]n[iİ]b[üu]s|m[iİ]d[iİ]b[üu]s|otob[üu]s|sedan|v[iİ]p|bus|mini")))j.vtype=m[1].toLocaleUpperCase("tr");
+    if(take(W("depar|d[öo]n[üu][şs]|departure")))j.jtype="depar";else if(take(W("gel[iİ][şs]|var[ıi][şs]|kar[şs][ıi]lama|arrival")))j.jtype="varis";
+    take(W("nak[iİ]t|al[ıi]nacak|cash|elden"));
+    if(m=s.match(new RegExp("(["+L+"][" +L+"0-9.&]*(?: ["+L+"0-9.&]+){0,4})\\s*(?:-|–|>|→|=>)\\s*(["+L+"][" +L+"0-9.&]*(?: ["+L+"0-9.&]+){0,3})"))){j.from=m[1].trim();j.to=m[2].trim()}
+    else if(AIR.test(raw)){const cells=raw.split(/\t+|\s\|\s|\s{2,}/),cell=cells.length>1?cells.find(c=>AIR.test(c)):s,ap=cell.match(AIR)[1],rest=cell.replace(ap,"  ").trim().split(/\s{2,}/).map(x=>x.trim()).filter(x=>x&&!/^\d+$/.test(x)).pop()||"";
+      const r4=rest.split(" ").slice(-4).join(" ");if(j.jtype=="varis"){j.from=ap;j.to=r4}else{j.from=r4;j.to=ap}}
+    if(!j.jtype)j.jtype=AIR.test(j.to)?"depar":AIR.test(j.from)?"varis":"";
+    if(!j.date&&!j.time&&cur){cur.raw+="\n"+raw;["pax","amount","from","to","vtype","partner","share"].forEach(k=>{if(!cur[k]&&j[k]){cur[k]=j[k];if(k=="amount")cur.cur=j.cur}});if(j.mode=="sofor_nakit")cur.mode=j.mode;continue}
+    if(!j.date)j.date=iso(now);out.push(j);cur=j;
+  }
+  return out;
+}
+async function readPaste(){
+  PJ=parsePaste($("#wt").value);const e=$("#wmsg");
+  if(!PJ.length){e.textContent="Okunacak iş bulunamadı.";e.className="sub bad";return}
+  const low=s=>String(s||"").trim().toLocaleLowerCase("tr"),pr=await sb.from("jobs").select("from_city,to_city,amount,currency").eq("company_id",co.id).gt("amount",0).order("created_at",{ascending:false}).limit(300),mem={};
+  (pr.data||[]).forEach(x=>{const k=low(x.from_city)+"|"+low(x.to_city);if(!mem[k])mem[k]=x});
+  PJ.forEach(j=>{const d=DRV.find(x=>new RegExp("(^|\\s)"+x.name.split(" ")[0].replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(\\s|$)","i").test(j.raw));if(d)j.did=d.id;
+    if(j.amount===""){const k=mem[low(j.from)+"|"+low(j.to)];if(k&&j.from){j.amount=Number(k.amount);j.cur=k.currency;j.mem=1}}});
+  e.textContent=PJ.length+" iş okundu. Kontrol edip kaydet.";e.className="sub ok";pasteView();
+}
+function pasteView(){
+  if(!PJ.length){$("#wp").innerHTML="";return}
+  const o=(a,f,sel)=>a.map(x=>`<option value="${x.id}" ${x.id==sel?"selected":""}>${esc(f(x))}</option>`).join(""),I=(i,k,ph,w,im)=>`<input class="sm" style="width:${w}px" placeholder="${ph}" ${im?`inputmode="${im}"`:""} value="${esc(PJ[i][k])}" onchange="PJ[${i}].${k}=this.value">`;
+  let ag="";try{ag=localStorage.getItem("ft_agency_w")||""}catch(e){}
+  $("#wp").innerHTML=PJ.map((j,i)=>`<div class="stop" style="padding:10px 0"><span class="k">${esc(j.raw)}</span><br><input class="sm" type="date" value="${esc(j.date)}" onchange="PJ[${i}].date=this.value"> <input class="sm" type="time" value="${esc(j.time)}" onchange="PJ[${i}].time=this.value"> ${I(i,"pax","kişi",60,"numeric")}<br>${I(i,"from","nereden",150)} → ${I(i,"to","nereye",150)}<br>${I(i,"amount","tutar",90,"decimal")} <select class="sm" onchange="PJ[${i}].cur=this.value">${["TRY","EUR","USD","GBP"].map(c=>`<option ${c==j.cur?"selected":""}>${c}</option>`).join("")}</select> <select class="sm" onchange="PJ[${i}].mode=this.value"><option value="acenta_cari" ${j.mode=="acenta_cari"?"selected":""}>Acenta cari</option><option value="sofor_nakit" ${j.mode=="sofor_nakit"?"selected":""}>Şoför nakit</option></select>${j.mem?' <span class="tag">son fiyat</span>':""}${j.guest?` <span class="k">misafirden ${esc(j.guest)}</span>`:""}<br>${I(i,"partner","işi atan",120)} ${I(i,"share","pay",80,"decimal")} <select class="sm" id="wv${i}" onchange="PJ[${i}].vid=this.value;defDrv(this.value,'wd${i}');PJ[${i}].did=$('#wd${i}').value"><option value="">Araç</option>${o(VEH,x=>x.plate,j.vid)}</select> <select class="sm" id="wd${i}" onchange="PJ[${i}].did=this.value"><option value="">Şoför</option>${o(DRV,x=>x.name,j.did)}</select> <button class="x" onclick="PJ.splice(${i},1);pasteView()">Çıkar</button></div>`).join("")+`<label>Acenta (işi gönderen, boş bırakılabilir)</label><input id="wa" value="${esc(ag)}"><div class="row"><button onclick="savePaste()">${PJ.length} işi kaydet</button><button class="alt" onclick="PJ=[];pasteView()">Vazgeç</button></div>`;
+}
+async function savePaste(){
+  const e=$("#wmsg"),bad=m=>{e.textContent=m;e.className="sub bad"},agency=$("#wa").value.trim(),rows=[];
+  try{localStorage.setItem("ft_agency_w",agency)}catch(x){}
+  try{const aid=await agId(agency);
+    for(const j of PJ){const a=j.amount===""?0:num(j.amount),sh=j.share===""?0:num(j.share),px=j.pax===""?null:num(j.pax);
+      if(!j.date){bad("Tarihi boş iş var.");return}if(a==null||a<0||sh==null||sh<0){bad("Tutar ya da pay hatalı: "+j.raw.slice(0,40));return}
+      rows.push({company_id:co.id,job_date:j.date,pickup_time:j.time||null,job_type:j.jtype||null,from_city:String(j.from).trim()||null,to_city:String(j.to).trim()||null,vehicle_type:j.vtype||null,vehicle_id:j.vid||null,driver_id:j.did||null,pax:px?Math.round(px):null,amount:a,currency:j.cur,collection_mode:j.mode,agency_id:aid,partner_agency_id:sh>0?await agId(j.partner):null,partner_share:sh,notes:j.raw.slice(0,500),source:"whatsapp"})}
+  }catch(x){bad(x.message);return}
+  const r=await sb.from("jobs").insert(rows);if(r.error){bad("Kaydedilemedi: "+r.error.message);return}
+  FLASH="";PJ=[];JF="acik";await vehiclesView("j");const e2=$("#wmsg");if(e2){e2.textContent=rows.length+" iş kaydedildi.";e2.className="sub ok"}
+}
 async function setDefDrv(vid,did){const r=await sb.from("vehicles").update({default_driver_id:did||null}).eq("id",vid);if(r.error){alert(r.error.message);return}await vehiclesView("v")}
 async function addJob(){
   const v=id=>$("#"+id).value,m=num(v("jm"));
@@ -430,6 +489,6 @@ async function delVeh(id,plate){
   if(r.error){alert("Silinemedi: bu araca bağlı sefer ya da kayıtlar olabilir.");return}
   await vehiclesView();
 }
-for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD"])globalThis[n]=once(globalThis[n]);
+for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD","savePaste","readPaste"])globalThis[n]=once(globalThis[n]);
 boot().catch(e=>{$("#app").innerHTML=`<p class="bad">Uygulama açılamadı: ${esc(e.message)}. Bağlantını kontrol edip sayfayı yenile.</p>`});
 </script></body></html>
