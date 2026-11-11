@@ -38,6 +38,8 @@ details{margin-top:6px}summary{cursor:pointer;font-size:13px;color:var(--ac)}
 input,select,textarea{font-size:16px}
 button.x{min-height:38px;padding:8px 10px}
 button.x.n{color:var(--ac)}
+a.lk{color:var(--ac);font-weight:700;text-decoration:none;min-height:38px;padding:8px 10px;display:inline-block}
+.pl{font-size:14px;padding:6px 0;border-top:1px dashed var(--bd)}
 .df{margin:4px 0 0 18px;padding:0;font-size:13px}
 .card>summary{font-size:16px;font-weight:700;color:var(--tx);min-height:28px}details.card{margin-top:0}details.card[open]>summary{margin-bottom:8px}
 .st{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;z-index:5}.st.on{opacity:1}.st.bad{background:var(--bad);color:#fff}
@@ -120,7 +122,7 @@ async function makeCompany(){
   co={id:c.data.id,name:c.data.name};await vehiclesView();
 }
 
-let TAB=(typeof location!="undefined"&&location.hash.length==2&&"pjsctv".includes(location.hash[1])&&location.hash[1])||"p",VEH=[],DRV=[],AGN=[];
+let TAB=(typeof location!="undefined"&&location.hash.length==2&&"opjsctv".includes(location.hash[1])&&location.hash[1])||"o",VEH=[],DRV=[],AGN=[];
 const sum=(a,k)=>a.reduce((s,x)=>s+Number(x[k]||0),0),fm=n=>Math.round(n).toLocaleString("tr-TR")+" ₺";
 async function vehiclesView(t){
   const g=++GEN,sy=(!t||t===TAB)&&typeof scrollY=="number"?scrollY:0;
@@ -131,8 +133,8 @@ async function vehiclesView(t){
   if(r.error||dr.error||ag.error){$("#app").innerHTML=`<p class="bad">${esc(errText(r.error||dr.error||ag.error))}</p><button class="alt" onclick="vehiclesView()">Tekrar dene</button>`;return}
   VEH=r.data||[];DRV=dr.data||[];AGN=ag.data||[];
   $("#app").innerHTML=`<div class="top"><div><h1>${esc(co.name)}</h1><p class="sub">${esc(user.email)}</p></div><button class="alt" onclick="logout()">Çıkış</button></div>
-  <div class="tabs" id="mt">${[["p","Panel"],["j","İşler"],["s","Şoförler"],["c","Cari"],["t","Seferler"],["v","Araçlar"]].map(x=>`<button class="${TAB==x[0]?"":"alt"}" onclick="vehiclesView('${x[0]}')">${x[1]}</button>`).join("")}</div><div id="tab"></div>`;
-  await ({p:panelTab,j:jobTab,s:drvTab,c:cariTab,t:tripTab,v:vehTab})[TAB]();
+  <div class="tabs" id="mt">${[["o","Plan"],["j","İşler"],["s","Şoförler"],["c","Cari"],["t","Seferler"],["v","Araçlar"],["p","Panel"]].map(x=>`<button class="${TAB==x[0]?"":"alt"}" onclick="vehiclesView('${x[0]}')">${x[1]}</button>`).join("")}</div><div id="tab"></div>`;
+  await ({o:planTab,p:panelTab,j:jobTab,s:drvTab,c:cariTab,t:tripTab,v:vehTab})[TAB]();
   const ab=$("#mt button:not(.alt)");if(ab&&ab.scrollIntoView)ab.scrollIntoView({inline:"center",block:"nearest"});
   if(sy&&g===GEN&&typeof scrollTo=="function")scrollTo(0,sy);
 }
@@ -210,16 +212,15 @@ async function agId(name){
 }
 async function jobTab(){
   const g0=GEN,q=s=>{let x=sb.from("jobs").select(s).eq("company_id",co.id);if(JF=="acik")x=x.neq("status","tamamlandi");return x.order("job_date",{ascending:JF=="acik"}).order("pickup_time",{ascending:true}).limit(100)};
-  let r=await q("*, job_stops(seq,place,region,pickup_time,pax,operator,note)");if(r.error)r=await q("*");
+  let r=await q("*, job_stops(seq,place,region,pickup_time,pax,operator,note,job_passengers(full_name))");if(r.error)r=await q("*");
   if(g0!==GEN||!need(r))return;
-  const rd=await sb.from("region_durations").select("region,minutes").eq("company_id",co.id);if(g0!==GEN)return;
-  RD=Object.assign({},RD0);RDO={};(rd.data||[]).forEach(x=>{RD[x.region]=x.minutes;RDO[x.region]=1});
+  await loadRD();if(g0!==GEN)return;
   JOBS=r.data||[];const hh=t=>t?t.slice(0,5):"",TL={varis:"Varış",depar:"Depar",transfer:"Transfer"};
   const dn={},an={},pv={};DRV.forEach(x=>dn[x.id]=x.name);AGN.forEach(x=>an[x.id]=x.name);VEH.forEach(x=>pv[x.id]=x.plate);
   const o=(a,f)=>a.map(f).join("");
   const list=JOBS.map(j=>{const done=j.status=="tamamlandi",st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq);
     const asg=done?`<span class="k">${esc(dn[j.driver_id]||"şoför yok")} · ${esc(pv[j.vehicle_id]||"araç yok")}</span>`:`<select class="sm" aria-label="Araç" onchange="setJobVeh('${j.id}',this.value)"><option value="">Araç seç</option>${o(VEH,x=>`<option value="${x.id}" ${x.id==j.vehicle_id?"selected":""}>${esc(vl(x))}</option>`)}</select> <select class="sm" aria-label="Şoför" onchange="setJobDrv('${j.id}',this.value)"><option value="">Şoför seç</option>${o(DRV,x=>`<option value="${x.id}" ${x.id==j.driver_id?"selected":""}>${esc(x.name)}</option>`)}</select>`;
-    return `<div class="veh"><div><b>${esc(j.from_city||"?")} → ${esc(j.to_city||"?")}</b><br><span class="k">${j.job_date.slice(8)+"."+j.job_date.slice(5,7)}${j.pickup_time?" "+hh(j.pickup_time):""}${j.job_type?" · "+TL[j.job_type]:""}${j.pax?" · "+j.pax+" kişi":""}${j.guest_name?" · "+esc(j.guest_name):""}</span><br><span class="k">${j.run_code?"iş kodu "+esc(j.run_code)+" · ":""}${j.vehicle_type?esc(j.vehicle_type)+" · ":""}${j.flight_no?esc(j.flight_no)+" "+hh(j.flight_time)+" · ":""}${esc(an[j.agency_id]||"acenta yok")}${j.guide_name?" · rehber "+esc(j.guide_name):""}</span><br>${asg}${capW(j.pax,j.vehicle_id)?`<br><span class="neg">${esc(capW(j.pax,j.vehicle_id))}</span>`:""}<br>${(e=>!e?"":e.miss?`<span class="tag">bitiş hesaplanamadı: ${esc(e.miss)} süresi tanımsız</span><br>`:`<span class="k">${e.m?"bitiş (elle)":"tahmini bitiş"} <b>${esc(e.t)}</b></span><br>`)(estEnd(j))}${Number(j.amount)?`<b>${fc(j.amount,j.currency)}</b>`:'<span class="tag">fiyat girilmedi</span>'} <span class="tag">${CM[j.collection_mode]||""}</span>${j.invoiced?"":'<span class="tag">faturasız</span>'}${j.partner_share>0?`<span class="k">pay ${fc(j.partner_share,j.currency)} → ${esc(an[j.partner_agency_id]||"?")}</span>`:""}${j.notes?`<br><span class="warn">${esc(j.notes)}</span>`:""}${st.length?`<details><summary>${st.length} durak</summary>${st.map(s=>`<div class="stop"><b>${hh(s.pickup_time)||"–"}</b> ${esc(s.place||"")} <span class="k">${esc(s.region||"")} · ${s.pax} kişi${s.operator?" · "+esc(s.operator):""}</span>${s.note?`<br><span class="warn">${esc(s.note)}</span>`:""}</div>`).join("")}</details>`:""}</div><div>${done?`<span class="ok">✓ Bitti</span><button class="x n" onclick="undoJob('${j.id}')">Geri al</button>`:`<button class="x n" onclick="doneJob('${j.id}')">Tamamla</button><button class="x n" onclick="setAmt('${j.id}')">Fiyat gir</button><button class="x n" onclick="setEnd('${j.id}')">Bitişi düzelt</button>`}<button class="x" onclick="delJob('${j.id}')">İşi sil</button></div></div>`}).join("")||`<p class="sub">${JF=="acik"?"Açık iş yok.":"Henüz iş yok."}</p>`;
+    return `<div class="veh"><div><b>${esc(j.from_city||"?")} → ${esc(j.to_city||"?")}</b><br><span class="k">${j.job_date.slice(8)+"."+j.job_date.slice(5,7)}${j.pickup_time?" "+hh(j.pickup_time):""}${j.job_type?" · "+TL[j.job_type]:""}${j.pax?" · "+j.pax+" kişi":""}${j.guest_name?" · "+esc(j.guest_name):""}</span><br><span class="k">${j.run_code?"iş kodu "+esc(j.run_code)+" · ":""}${j.vehicle_type?esc(j.vehicle_type)+" · ":""}${j.flight_no?esc(j.flight_no)+" "+hh(j.flight_time)+" · ":""}${esc(an[j.agency_id]||"acenta yok")}${j.guide_name?" · rehber "+esc(j.guide_name):""}</span><br>${asg}${capW(j.pax,j.vehicle_id)?`<br><span class="neg">${esc(capW(j.pax,j.vehicle_id))}</span>`:""}<br>${(e=>!e?"":e.miss?`<span class="tag">bitiş hesaplanamadı: ${esc(e.miss)} süresi tanımsız</span><br>`:`<span class="k">${e.m?"bitiş (elle)":"tahmini bitiş"} <b>${esc(e.t)}</b></span><br>`)(estEnd(j))}${Number(j.amount)?`<b>${fc(j.amount,j.currency)}</b>`:'<span class="tag">fiyat girilmedi</span>'} <span class="tag">${CM[j.collection_mode]||""}</span>${j.invoiced?"":'<span class="tag">faturasız</span>'}${j.partner_share>0?`<span class="k">pay ${fc(j.partner_share,j.currency)} → ${esc(an[j.partner_agency_id]||"?")}</span>`:""}${j.notes?`<br><span class="warn">${esc(j.notes)}</span>`:""}${st.length?`<details><summary>${st.length} durak</summary>${st.map(s=>`<div class="stop"><b>${hh(s.pickup_time)||"–"}</b> ${esc(s.place||"")} <span class="k">${esc(s.region||"")} · ${s.pax} kişi${s.operator?" · "+esc(s.operator):""}</span>${s.note?`<br><span class="warn">${esc(s.note)}</span>`:""}</div>`).join("")}</details>`:""}</div><div>${done?`<span class="ok">✓ Bitti</span><button class="x n" onclick="undoJob('${j.id}')">Geri al</button>`:`<a class="lk" href="${esc(waLink(j))}" target="_blank" rel="noopener">Şoföre gönder</a><button class="x n" onclick="doneJob('${j.id}')">Tamamla</button><button class="x n" onclick="setAmt('${j.id}')">Fiyat gir</button><button class="x n" onclick="setEnd('${j.id}')">Bitişi düzelt</button>`}<button class="x" onclick="delJob('${j.id}')">İşi sil</button></div></div>`}).join("")||`<p class="sub">${JF=="acik"?"Açık iş yok.":"Henüz iş yok."}</p>`;
   const fl=FLASH;FLASH="";
   $("#tab").innerHTML=`<div class="card"><h2>İşler</h2>${(n=>n?`<p class="sub neg">${n} işte araç kapasitesi aşılıyor.</p>`:"")(JOBS.filter(j=>j.status!="tamamlandi"&&capW(j.pax,j.vehicle_id)).length)}<div class="tabs"><button class="${JF=="acik"?"":"alt"}" onclick="JF='acik';vehiclesView('j')">Açık işler</button><button class="${JF=="tum"?"":"alt"}" onclick="JF='tum';vehiclesView('j')">Tümü (son 100)</button></div>${list}</div>
   <h2 style="margin:16px 0 8px">İş ekle</h2>
@@ -384,6 +385,44 @@ async function setAmt(id){
 const RD0={GUVERCINLIK:20,TORBA:30,BODRUM:40,GUMBET:40,BARDAKCI:40,BITEZ:45,ORTAKENT:50,GUNDOGAN:55,YALIKAVAK:60,TURGUTREIS:60,AKBUK:60,DIDIM:80,ALTINKUM:80};
 let RD=Object.assign({},RD0),RDO={};
 const rk=s=>String(s||"").trim().toUpperCase();
+async function loadRD(){const rd=await sb.from("region_durations").select("region,minutes").eq("company_id",co.id);RD=Object.assign({},RD0);RDO={};(rd.data||[]).forEach(x=>{RD[x.region]=x.minutes;RDO[x.region]=1})}
+const TLN={varis:"Varış",depar:"Depar",transfer:"Transfer"},h5=t=>t?String(t).slice(0,5):"";
+function waText(j){
+  const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq),v=VEH.find(x=>x.id==j.vehicle_id),tot=st.reduce((s,x)=>s+(x.job_passengers||[]).length,0),L=[];
+  L.push(`*${TLN[j.job_type]||"İş"}* ${j.job_date.slice(8)}.${j.job_date.slice(5,7)}${j.pickup_time?" "+h5(j.pickup_time):""}${j.run_code?" · iş kodu "+j.run_code:""}`,`${j.from_city||"?"} → ${j.to_city||"?"}`);
+  if(j.flight_no)L.push(`Uçuş: ${j.flight_no} ${h5(j.flight_time)}`);
+  if(v)L.push("Araç: "+v.plate);if(j.pax)L.push("Toplam: "+j.pax+" kişi");if(j.guest_name)L.push("Misafir: "+j.guest_name);
+  if(st.length){L.push("");st.forEach(s=>{L.push(`${h5(s.pickup_time)||"–"} ${s.place||""}${s.region?" ("+s.region+")":""} · ${s.pax} kişi`);const n=(s.job_passengers||[]).map(p=>p.full_name);if(n.length&&tot<=30)L.push("  "+n.join(", "));if(s.note)L.push("  Not: "+s.note)})}
+  else if(j.notes)L.push("Not: "+j.notes);
+  if(j.collection_mode=="sofor_nakit"&&Number(j.amount))L.push("","Misafirden alınacak: "+Number(j.amount).toLocaleString("tr-TR")+" "+j.currency);
+  return L.join("\n");
+}
+function waLink(j){const d=DRV.find(x=>x.id==j.driver_id);let p=d&&d.phone?String(d.phone).replace(/\D/g,""):"";if(/^0?5\d{9}$/.test(p))p="90"+p.replace(/^0/,"");return "https://wa.me/"+p+"?text="+encodeURIComponent(waText(j))}
+let PD="";
+function planDay(d){const x=new Date((PD||today())+"T12:00:00Z");x.setUTCDate(x.getUTCDate()+d);PD=x.toISOString().slice(0,10);vehiclesView("o")}
+async function planTab(){
+  const g0=GEN;PD=PD||today();
+  const [r]=await Promise.all([sb.from("jobs").select("id,job_date,pickup_time,end_time,job_type,from_city,to_city,pax,status,vehicle_id,driver_id,vehicle_type,run_code,flight_no,flight_time,job_stops(seq,place,region,pickup_time,pax)").eq("company_id",co.id).eq("job_date",PD).order("pickup_time"),loadRD()]);
+  if(g0!==GEN||!need(r))return;
+  const mn=t=>{const a=String(t).split(":");return a[0]*60+ +a[1]},dn={};DRV.forEach(x=>dn[x.id]=x.name);
+  const J=(r.data||[]).map(j=>{const e=estEnd(j),s=j.pickup_time?mn(j.pickup_time):null;let en=e&&e.t?mn(e.t):null;if(s!=null&&en!=null&&en<s)en+=1440;
+    const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq),ep=j.job_type=="varis"&&st.length?st[st.length-1].region||j.to_city:j.to_city;return{j,s,en,et:e&&e.t||"",ep:ep||"?"}});
+  const clash={},cid=new Set();
+  for(const k of ["vehicle_id","driver_id"]){const by={};J.forEach(x=>{const id=x.j[k];if(id&&x.s!=null&&x.j.status!="tamamlandi")(by[id]=by[id]||[]).push(x)});
+    Object.values(by).forEach(a=>{a.sort((p,q)=>p.s-q.s);for(let i=1;i<a.length;i++){const p=a[i-1],pe=p.en!=null?p.en:p.s+60;if(a[i].s<pe){clash[p.j.id+k]=1;clash[a[i].j.id+k]=1;cid.add(p.j.id);cid.add(a[i].j.id)}}})}
+  const isT=PD==today(),now=isT?mn(new Date().toLocaleTimeString("en-GB",{timeZone:"Europe/Istanbul",hour:"2-digit",minute:"2-digit"})):null;
+  const line=x=>{const j=x.j,cw=capW(j.pax,j.vehicle_id);return `<div class="pl"><b>${h5(j.pickup_time)||"saat yok"}${x.et?"–"+esc(x.et):""}</b> ${TLN[j.job_type]||""}${j.status=="tamamlandi"?' <span class="ok">✓</span>':""}<br><span class="k">${esc(j.from_city||"?")} → ${esc(j.to_city||"?")} · ${j.pax||0} kişi${j.run_code?" · iş kodu "+esc(j.run_code):""} · ${esc(dn[j.driver_id]||"şoför yok")}</span>${clash[j.id+"vehicle_id"]?'<br><span class="neg">Araç çakışıyor: önceki iş bitmeden başlıyor</span>':""}${clash[j.id+"driver_id"]?'<br><span class="neg">Şoför çakışıyor: önceki iş bitmeden başlıyor</span>':""}${cw?`<br><span class="neg">${esc(cw)}</span>`:""}</div>`};
+  const cards=VEH.map(v=>{const a=J.filter(x=>x.j.vehicle_id==v.id),op=a.filter(x=>x.j.status!="tamamlandi"&&x.s!=null);let stt;
+    if(!isT)stt=a.length?a.length+" iş":"İş yok";
+    else{const cur=op.find(x=>x.s<=now&&now<(x.en!=null?x.en:x.s+60)),nx=op.find(x=>x.s>now),ls=a.filter(x=>x.en!=null&&x.en<=now).pop();
+      stt=cur?`<span class="warn">İşte</span> · ${cur.et?esc(cur.et)+" civarı "+esc(cur.ep)+" konumunda boşalır":"bitiş saati bilinmiyor"}`:`<span class="pos">Boşta</span>${ls?" · son iş "+esc(ls.ep)+" konumunda bitti":v.home_city?" · "+esc(v.home_city):""}${nx?" · sıradaki "+h5(nx.j.pickup_time):""}`}
+    return `<div class="card"><div class="top"><b>${esc(vl(v))}</b></div><p class="sub" style="margin:4px 0">${stt}</p>${a.map(line).join("")}</div>`}).join("");
+  const un=J.filter(x=>!x.j.vehicle_id),nc=cid.size;
+  $("#tab").innerHTML=`<div class="card"><div class="row" style="margin:0;align-items:center"><button class="alt" style="flex:none" aria-label="Önceki gün" onclick="planDay(-1)">‹</button><input type="date" aria-label="Plan tarihi" value="${PD}" onchange="PD=this.value;vehiclesView('o')"><button class="alt" style="flex:none" aria-label="Sonraki gün" onclick="planDay(1)">›</button>${isT?"":`<button class="alt" style="flex:none" onclick="PD=today();vehiclesView('o')">Bugün</button>`}</div><p class="sub" style="margin:8px 0 0">${J.length} iş · ${J.reduce((s,x)=>s+(x.j.pax||0),0)} kişi${un.length?` · <span class="neg">${un.length} işe araç atanmamış</span>`:""}${nc?` · <span class="neg">${nc} işte çakışma var</span>`:""}</p></div>`+
+    (un.length?`<div class="card"><h2>Araç atanmamış işler</h2>${un.map(line).join("")}<div class="row"><button class="alt" onclick="JF='acik';vehiclesView('j')">İşlerde araç ata</button></div></div>`:"")+
+    (VEH.length?cards:`<p class="sub">Henüz araç yok.</p><button onclick="vehiclesView('v')">Araç ekle</button>`)+
+    `<p class="sub">Bitiş saatleri tahmindir (Bölge süreleri, İşler sekmesinin altında). Çakışma, bir aracın ya da şoförün önceki işi bitmeden yeni işe başlaması demektir.</p>`;
+}
 function estEnd(j){
   if(j.end_time)return{t:j.end_time.slice(0,5),m:true};
   const st=j.job_stops||[];if(!st.length)return null;
