@@ -23,7 +23,7 @@ button.x{background:none;color:var(--bad);padding:4px 8px}
 .veh:first-of-type{border:0}
 .k{color:var(--mu);font-size:12px}
 .bad{color:var(--bad)}.ok{color:var(--ac)}
-.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{flex:1}
+.tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto}.tabs button{flex:none;padding:10px 14px}
 .sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
 .sum div{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px}.sum b{display:block;font-size:16px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:8px}
@@ -99,15 +99,15 @@ async function makeCompany(){
   co={id:c.data.id,name:c.data.name};await vehiclesView();
 }
 
-let TAB="p",VEH=[];
+let TAB="p",VEH=[],DRV=[],AGN=[];
 const sum=(a,k)=>a.reduce((s,x)=>s+Number(x[k]||0),0),fm=n=>Math.round(n).toLocaleString("tr-TR")+" ₺";
 async function vehiclesView(t){
   TAB=t||TAB;
-  const r=await sb.from("vehicles").select("*").eq("company_id",co.id).order("plate");
-  VEH=r.data||[];
+  const [r,dr,ag]=await Promise.all([sb.from("vehicles").select("*").eq("company_id",co.id).order("plate"),sb.from("drivers").select("*").eq("company_id",co.id).order("name"),sb.from("agencies").select("id,name").eq("company_id",co.id).order("name")]);
+  VEH=r.data||[];DRV=dr.data||[];AGN=ag.data||[];
   $("#app").innerHTML=`<div class="top"><div><h1>${esc(co.name)}</h1><p class="sub">${esc(user.email)}</p></div><button class="alt" onclick="logout()">Çıkış</button></div>
-  <div class="tabs">${[["p","Panel"],["t","Seferler"],["v","Araçlar"]].map(x=>`<button class="${TAB==x[0]?"":"alt"}" onclick="vehiclesView('${x[0]}')">${x[1]}</button>`).join("")}</div><div id="tab"></div>`;
-  await ({p:panelTab,t:tripTab,v:vehTab})[TAB]();
+  <div class="tabs">${[["p","Panel"],["j","İşler"],["s","Şoförler"],["c","Cari"],["t","Seferler"],["v","Araçlar"]].map(x=>`<button class="${TAB==x[0]?"":"alt"}" onclick="vehiclesView('${x[0]}')">${x[1]}</button>`).join("")}</div><div id="tab"></div>`;
+  await ({p:panelTab,j:jobTab,s:drvTab,c:cariTab,t:tripTab,v:vehTab})[TAB]();
 }
 async function panelTab(){
   if(!VEH.length){$("#tab").innerHTML=`<p class="sub">Önce Araçlar sekmesinden araç ekle.</p>`;return}
@@ -166,6 +166,84 @@ function vehTab(){
   <div class="f2"><div><label>Aylık sabit gider (₺)</label><input id="fx" inputmode="decimal" placeholder="sigorta, kredi, bakım payı"></div><div><label>Ort. tüketim (L/100 km)</label><input id="bc" inputmode="decimal"></div>
   <div><label>Bulunduğu şehir</label><input id="hc" placeholder="Bodrum"></div><div><label>Km saati</label><input id="od" inputmode="numeric"></div></div>
   <div class="row"><button onclick="addVeh()">Aracı kaydet</button></div><p id="msg" class="sub"></p></div>`;
+}
+const CUR={TRY:"₺",EUR:"€",USD:"$",GBP:"£"},CM={sofor_nakit:"Şoför nakit",acenta_cari:"Acenta cari",ofis:"Ofiste",kart:"Kart"};
+const fc=(n,c)=>Number(n).toLocaleString("tr-TR",{maximumFractionDigits:2})+" "+(CUR[c]||c);
+async function agId(name){
+  name=(name||"").trim();if(!name)return null;
+  const a=await sb.from("agencies").upsert({company_id:co.id,name},{onConflict:"company_id,name"}).select("id").single();
+  if(a.error)throw new Error("Acenta kaydedilemedi: "+a.error.message);return a.data.id;
+}
+async function jobTab(){
+  const r=await sb.from("jobs").select("*").eq("company_id",co.id).order("job_date",{ascending:false}).order("pickup_time",{ascending:false}).limit(30);
+  const dn={},an={},pv={};DRV.forEach(x=>dn[x.id]=x.name);AGN.forEach(x=>an[x.id]=x.name);VEH.forEach(x=>pv[x.id]=x.plate);
+  const o=(a,f)=>a.map(f).join("");
+  const list=(r.data||[]).map(j=>{const done=j.status=="tamamlandi";return `<div class="veh"><div><b>${esc(j.from_city||"?")} → ${esc(j.to_city||"?")}</b> <span class="k">${j.job_date.slice(8)+"."+j.job_date.slice(5,7)}${j.pickup_time?" "+j.pickup_time.slice(0,5):""}${j.pax?" · "+j.pax+" kişi":""}${j.guest_name?" · "+esc(j.guest_name):""}</span><br><span class="k">${esc(dn[j.driver_id]||"şoför yok")} · ${esc(pv[j.vehicle_id]||j.vehicle_type||"araç yok")} · ${esc(an[j.agency_id]||"acenta yok")}</span><br><b>${fc(j.amount,j.currency)}</b> <span class="tag">${CM[j.collection_mode]}</span>${j.invoiced?"":'<span class="tag">faturasız</span>'}${j.partner_share>0?`<span class="k">pay ${fc(j.partner_share,j.currency)} → ${esc(an[j.partner_agency_id]||"?")}</span>`:""}</div><div>${done?'<span class="ok">✓ Bitti</span>':`<button class="x" onclick="doneJob('${j.id}')">Tamamlandı</button>`}<button class="x" onclick="delJob('${j.id}')">Sil</button></div></div>`}).join("")||`<p class="sub">Henüz iş yok.</p>`;
+  $("#tab").innerHTML=`<div class="card"><h2>İş ekle</h2>
+  <div class="f2"><div><label>Tarih</label><input id="jd" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div><label>Saat</label><input id="jh" type="time"></div>
+  <div><label>Nereden</label><input id="jf"></div><div><label>Nereye</label><input id="jn"></div>
+  <div><label>Tür</label><select id="jy"><option value="">-</option><option value="varis">Varış</option><option value="depar">Depar</option><option value="transfer">Transfer</option></select></div><div><label>Kişi sayısı</label><input id="jp" inputmode="numeric"></div>
+  <div><label>Misafir</label><input id="jg"></div><div><label>Araç tipi</label><input id="jt" placeholder="Vito"></div>
+  <div><label>Şoför</label><select id="jr"><option value="">Seçilmedi</option>${o(DRV,x=>`<option value="${x.id}">${esc(x.name)}</option>`)}</select></div><div><label>Araç</label><select id="jv"><option value="">Seçilmedi</option>${o(VEH,x=>`<option value="${x.id}">${esc(x.plate)}</option>`)}</select></div>
+  <div><label>Tutar</label><input id="jm" inputmode="decimal"></div><div><label>Para birimi</label><select id="jc"><option>TRY</option><option>EUR</option><option>USD</option><option>GBP</option></select></div>
+  <div><label>Tahsilat şekli</label><select id="jk"><option value="sofor_nakit">Şoför nakit alır</option><option value="acenta_cari">Acenta cari</option><option value="ofis">Ofiste ödenir</option><option value="kart">Kart</option></select></div><div><label>Acenta (müşteri)</label><input id="ja"></div>
+  <div><label>İşi atan firma</label><input id="jo"></div><div><label>İşi atana pay (aynı para birimi)</label><input id="js" inputmode="decimal"></div></div>
+  <label class="chk"><input id="jf2" type="checkbox" checked> Faturalı iş</label>
+  <div class="row"><button onclick="addJob()">İşi kaydet</button></div><p id="msg" class="sub"></p></div>
+  <div class="card"><h2>İşler</h2>${list}</div>`;
+}
+async function addJob(){
+  const v=id=>$("#"+id).value,m=num(v("jm"));
+  if(m==null||!v("jd")){msg("Tarih ve tutar zorunlu.",true);return}
+  try{
+    const aid=await agId(v("ja")),pid=await agId(v("jo")),p=num(v("jp"));
+    const r=await sb.from("jobs").insert({company_id:co.id,job_date:v("jd"),pickup_time:v("jh")||null,job_type:v("jy")||null,from_city:v("jf").trim()||null,to_city:v("jn").trim()||null,vehicle_type:v("jt").trim()||null,driver_id:v("jr")||null,vehicle_id:v("jv")||null,guest_name:v("jg").trim()||null,pax:p?Math.round(p):null,agency_id:aid,amount:m,currency:v("jc"),collection_mode:v("jk"),invoiced:$("#jf2").checked,partner_agency_id:pid,partner_share:num(v("js"))||0});
+    if(r.error)throw new Error(r.error.message);
+  }catch(e){msg("Kaydedilemedi: "+e.message,true);return}
+  await vehiclesView("j");
+}
+async function doneJob(id){
+  const j=(await sb.from("jobs").select("amount,currency,collection_mode").eq("id",id).single()).data;
+  let c=null;
+  if(j&&j.collection_mode=="sofor_nakit"){const t=prompt("Şoförün tahsil ettiği tutar ("+j.currency+")",j.amount);if(t===null)return;c=num(t);if(c==null){alert("Geçerli bir tutar yaz.");return}}
+  const r=await sb.rpc("complete_job",{p_job:id,p_collected:c});
+  if(r.error){alert(r.error.message);return}
+  await vehiclesView("j");
+}
+async function delJob(id){
+  if(!confirm("İş silinsin mi?"))return;
+  const r=await sb.from("jobs").delete().eq("id",id);
+  if(r.error){alert("Silinemedi: bu işe bağlı para hareketi olabilir.");return}await vehiclesView("j");
+}
+async function drvTab(){
+  const b=await sb.from("ledger_balances").select("driver_id,currency,balance").eq("company_id",co.id).not("driver_id","is",null);
+  const bal={};(b.data||[]).forEach(x=>{(bal[x.driver_id]=bal[x.driver_id]||[]).push(x)});
+  const list=DRV.map(d=>{const bs=(bal[d.id]||[]).filter(x=>Number(x.balance)!=0);return `<div class="veh"><div><b>${esc(d.name)}</b> <span class="k">${esc(d.phone||"")}</span><br>${bs.length?bs.map(x=>`<span class="warn">${fc(x.balance,x.currency)}</span> <button class="x" onclick="settle('d','${d.id}','${x.currency}',${x.balance})">Teslim aldım</button>`).join("<br>"):'<span class="k">Üzerinde para yok</span>'}</div><button class="x" onclick="delDrv('${d.id}')">Sil</button></div>`}).join("")||`<p class="sub">Henüz şoför yok.</p>`;
+  $("#tab").innerHTML=`<div class="card"><h2>Şoförler ve üzerindeki para</h2>${list}</div><div class="card"><h2>Şoför ekle</h2><label>Ad soyad</label><input id="dn"><label>Telefon</label><input id="dp" inputmode="tel"><div class="row"><button onclick="addDrv()">Şoförü kaydet</button></div><p id="msg" class="sub"></p></div>`;
+}
+async function addDrv(){
+  const n=$("#dn").value.trim();if(!n){msg("Ad soyad yaz.",true);return}
+  const r=await sb.from("drivers").insert({company_id:co.id,name:n,phone:$("#dp").value.trim()||null});
+  if(r.error){msg(r.error.code==="23505"?"Bu isimde şoför var.":"Kaydedilemedi: "+r.error.message,true);return}await vehiclesView("s");
+}
+async function delDrv(id){
+  if(!confirm("Şoför silinsin mi?"))return;
+  const r=await sb.from("drivers").delete().eq("id",id);
+  if(r.error){alert("Silinemedi: şoföre bağlı iş ya da para hareketi var.");return}await vehiclesView("s");
+}
+async function cariTab(){
+  const b=await sb.from("ledger_balances").select("agency_id,currency,balance").eq("company_id",co.id).not("agency_id","is",null);
+  const bal={};(b.data||[]).forEach(x=>{if(Number(x.balance)!=0)(bal[x.agency_id]=bal[x.agency_id]||[]).push(x)});
+  const list=AGN.filter(a=>bal[a.id]).map(a=>`<div class="veh"><div><b>${esc(a.name)}</b><br>${bal[a.id].map(x=>`<span class="${x.balance>0?"pos":"neg"}">${fc(Math.abs(x.balance),x.currency)} ${x.balance>0?"bize borçlu":"biz borçluyuz"}</span> <button class="x" onclick="settle('a','${a.id}','${x.currency}',${x.balance})">${x.balance>0?"Ödeme aldık":"Ödeme yaptık"}</button>`).join("<br>")}</div></div>`).join("")||`<p class="sub">Açık cari bakiye yok. İşleri tamamladıkça burada görünür.</p>`;
+  $("#tab").innerHTML=`<div class="card"><h2>Cari hesaplar</h2><p class="sub">Para birimleri ayrı ayrı tutulur, birbirine çevrilmez.</p>${list}</div>`;
+}
+async function settle(k,id,cur,bal){
+  const t=prompt((k=="d"?"Teslim alınan tutar (":"Tutar (")+cur+")",Math.abs(bal));if(t===null)return;
+  const a=num(t);if(a==null||a<=0){alert("Geçerli bir tutar yaz.");return}
+  const row={company_id:co.id,currency:cur,amount:(bal>0?-1:1)*a,kind:k=="d"?"teslim":"odeme"};
+  row[k=="d"?"driver_id":"agency_id"]=id;
+  const r=await sb.from("ledger_entries").insert(row);
+  if(r.error){alert(r.error.message);return}await vehiclesView(k=="d"?"s":"c");
 }
 async function addVeh(){
   const plate=$("#pl").value.trim().toUpperCase();
