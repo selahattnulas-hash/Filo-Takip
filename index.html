@@ -466,6 +466,35 @@ async function sharePdf(id){
     say("PDF indirildi. WhatsApp'ta belge olarak ekleyip gönderebilirsin");
   }catch(e){say("PDF hazırlanamadı: "+errText(e),true)}
 }
+function uetdsRows(jobs){
+  const mn=t=>{const a=String(t).split(":");return a[0]*60+ +a[1]},f=x=>{x=((x%1440)+1440)%1440;return String(Math.floor(x/60)).padStart(2,"0")+":"+String(x%60).padStart(2,"0")},dt=d=>d.slice(8)+"."+d.slice(5,7)+"."+d.slice(0,4);
+  const rows=[["firmaSeferNo","aracPlaka","hareketTarihi","hareketSaati","seferBitisTarihi","seferBitisSaati","baslangicYer","bitisYer","sofor","grupAdi","adi","soyadi","uyrukUlke","tcKimlikPasaportNo","cinsiyet","yolcuTipi"]],warn=[];
+  jobs.forEach(j=>{
+    const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq),v=VEH.find(x=>x.id==j.vehicle_id),d=DRV.find(x=>x.id==j.driver_id),e=estEnd(j),w=[];
+    const lbl=`${h5(j.pickup_time)||"saat yok"} ${j.from_city||"?"} → ${j.to_city||"?"}${j.run_code?" (iş kodu "+j.run_code+")":""}`;
+    let ed=j.job_date;if(j.pickup_time&&e&&e.t&&mn(e.t)<mn(j.pickup_time)){const x=new Date(j.job_date+"T12:00:00Z");x.setUTCDate(x.getUTCDate()+1);ed=x.toISOString().slice(0,10)}
+    const ppl=st.flatMap(s=>(s.job_passengers||[]).map(p=>({p,s}))),cnt=ppl.filter(x=>!/^inf$/i.test(x.p.title||"")).length;
+    if(!v)w.push("araç atanmamış");if(!d)w.push("şoför atanmamış");if(!j.pickup_time)w.push("başlangıç saati yok");if(!e||!e.t)w.push("bitiş saati hesaplanamadı");
+    if(!ppl.length)w.push("yolcu adı yok");else if(j.pax&&cnt!=j.pax)w.push(`yolcu adı sayısı ${cnt}, kişi sayısı ${j.pax}`);
+    if(w.length)warn.push(lbl+": "+w.join(", "));
+    const base=[j.run_code||j.id.slice(0,8),v?v.plate:"",dt(j.job_date),h5(j.pickup_time),dt(ed),e&&e.t||"",j.from_city||"",j.to_city||"",d?d.name:""];
+    if(!ppl.length)rows.push(base.concat(["","","","","","",""]));
+    ppl.forEach(({p,s})=>{const a=String(p.full_name||"").trim().split(/\s+/),t=String(p.title||"").toLowerCase();
+      rows.push(base.concat([s.place||"",a.length>1?a[a.length-1]:a[0],a.length>1?a.slice(0,-1).join(" "):"","","","",t=="chd"?"çocuk":t=="inf"?"bebek":"yetişkin"]))});
+    if(j.pickup_time)j._dl=f(mn(j.pickup_time)-60);
+  });
+  return{rows,warn};
+}
+async function uetdsDay(){
+  const r=await sb.from("jobs").select("id,job_date,pickup_time,end_time,job_type,from_city,to_city,pax,status,vehicle_id,driver_id,run_code,flight_no,flight_time,job_stops(seq,place,region,pickup_time,pax,job_passengers(full_name,title))").eq("company_id",co.id).eq("job_date",PD).order("pickup_time");
+  if(r.error){alert(errText(r.error));return}
+  if(!(r.data||[]).length){say("Bu gün için iş yok",true);return}
+  await loadRD();const {rows,warn}=uetdsRows(r.data);
+  const csv="﻿"+rows.map(x=>x.map(c=>{c=String(c==null?"":c);return /[;"\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(";")).join("\r\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download="uetds-"+PD+".csv";document.body.appendChild(a);a.click();a.remove();
+  const first=r.data.filter(j=>j._dl).map(j=>j._dl).sort()[0],e=$("#uw");
+  if(e)e.innerHTML=`<p class="sub ok">${rows.length-1} satır indirildi.${first?" İlk seferin bildirimi en geç "+esc(first)+" saatine kadar yapılmalı.":""}</p>`+(warn.length?`<p class="sub neg">Bildirimden önce tamamlanması gerekenler:</p><ul class="df">${warn.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p class="sub">Eksik görünmüyor.</p>`);
+}
 let PD="";
 function planDay(d){const x=new Date((PD||today())+"T12:00:00Z");x.setUTCDate(x.getUTCDate()+d);PD=x.toISOString().slice(0,10);vehiclesView("o")}
 async function planTab(){
@@ -489,6 +518,7 @@ async function planTab(){
   $("#tab").innerHTML=`<div class="card"><div class="row" style="margin:0;align-items:center"><button class="alt" style="flex:none" aria-label="Önceki gün" onclick="planDay(-1)">‹</button><input type="date" aria-label="Plan tarihi" value="${PD}" onchange="PD=this.value;vehiclesView('o')"><button class="alt" style="flex:none" aria-label="Sonraki gün" onclick="planDay(1)">›</button>${isT?"":`<button class="alt" style="flex:none" onclick="PD=today();vehiclesView('o')">Bugün</button>`}</div><p class="sub" style="margin:8px 0 0">${J.length} iş · ${J.reduce((s,x)=>s+(x.j.pax||0),0)} kişi${un.length?` · <span class="neg">${un.length} işe araç atanmamış</span>`:""}${nc?` · <span class="neg">${nc} işte çakışma var</span>`:""}</p></div>`+
     (un.length?`<div class="card"><h2>Araç atanmamış işler</h2>${un.map(line).join("")}<div class="row"><button class="alt" onclick="JF='acik';vehiclesView('j')">İşlerde araç ata</button></div></div>`:"")+
     (VEH.length?cards:`<p class="sub">Henüz araç yok.</p><button onclick="vehiclesView('v')">Araç ekle</button>`)+
+    `<div class="card"><h2>UETDS hazırlığı</h2><p class="sub">Bu günün işlerini UETDS alan adlarıyla tek tablo olarak indirir (Excel'de açılır). Bildirim, sefer başlamadan en geç 1 saat önce yapılmalı. Uyruk ve pasaport numarası acenta listelerinde olmadığı için boş gelir.</p><div class="row"><button onclick="uetdsDay()">Günün UETDS tablosunu indir</button></div><div id="uw"></div></div>`+
     `<p class="sub">Bitiş saatleri tahmindir (Bölge süreleri, İşler sekmesinin altında). Çakışma, bir aracın ya da şoförün önceki işi bitmeden yeni işe başlaması demektir.</p>`;
 }
 function estEnd(j){
