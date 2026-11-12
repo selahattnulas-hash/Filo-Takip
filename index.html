@@ -320,7 +320,7 @@ async function vehTab(){
   <label>Plaka</label><input id="pl" placeholder="48 ABC 123" autocapitalize="characters">
   <div class="f2"><div><label>Aylık sabit gider (₺)</label><input id="fx" inputmode="decimal" placeholder="sigorta, kredi, bakım payı"></div><div><label>Ort. tüketim (L/100 km)</label><input id="bc" inputmode="decimal"></div>
   <div><label>Bulunduğu şehir</label><input id="hc" placeholder="Bodrum"></div><div><label>Yolcu kapasitesi</label><input id="cp" inputmode="numeric" placeholder="16"></div><div><label>Km saati</label><input id="od" inputmode="numeric"></div></div>
-  <div class="row"><button onclick="addVeh()">Aracı kaydet</button></div><p id="msg" class="sub" role="status"></p></div><div id="docs"></div><div id="team"></div>`;
+  <div class="row"><button onclick="addVeh()">Aracı kaydet</button></div><p id="msg" class="sub" role="status"></p></div><div id="docs"></div><div id="team"></div>${ROLE=="owner"?`<div class="card"><h2>Veri yedeği</h2><p class="sub">Firmanın bütün kayıtlarını (araçlar, işler, yolcular, fiyatlar, yakıt, cari) tek dosya olarak indirir. Ayda bir indirip Drive'a ya da e-postana koyman yeterli.</p><div class="row"><button class="alt" onclick="backupAll()">Tüm verileri indir</button></div></div>`:""}`;
   docsView();if(ROLE=="owner")teamView();
 }
 const CUR={TRY:"₺",EUR:"€",USD:"$",GBP:"£"},CM={sofor_nakit:"Şoför nakit",acenta_cari:"Acenta cari",ofis:"Ofiste",kart:"Kart"};
@@ -892,10 +892,13 @@ function priceFor(j){
   return best||{miss:why||"fiyat bulunamadı"};
 }
 async function priceView(){
-  const r=await sb.from("price_items").select("*").eq("company_id",co.id),e=$("#pr");if(!e||r.error)return;PI=r.data||[];
+  const [r,fq]=await Promise.all([sb.from("price_items").select("*").eq("company_id",co.id),sb.from("fuel_logs").select("log_date,liters,amount").eq("company_id",co.id).order("log_date").limit(5000)]),e=$("#pr");if(!e||r.error)return;PI=r.data||[];
+  const FL=fq.error?[]:(fq.data||[]).filter(x=>Number(x.liters)>0&&Number(x.amount)>0),avg=a=>{const l=a.reduce((s,x)=>s+Number(x.liters),0);return l?a.reduce((s,x)=>s+Number(x.amount),0)/l:null},addD=(d,n)=>today(new Date(new Date(d+"T12:00:00Z").getTime()+n*864e5));
+  const fuelUp=vf=>{if(!vf||FL.length<2)return "";const b=FL.filter(x=>x.log_date>=addD(vf,-15)&&x.log_date<=addD(vf,15)),last=FL[FL.length-1].log_date,n=FL.filter(x=>x.log_date>addD(last,-30));const a0=avg(b.length?b:FL.filter(x=>x.log_date>=vf).slice(0,5)),a1=avg(n);if(!a0||!a1||n[0].log_date<=(b.length?b[b.length-1].log_date:vf))return "";
+    const pc=(a1/a0-1)*100;return `<p class="sub ${pc>10?"warn":""}" style="margin:0">Mazot: sezon başı ${a0.toFixed(2)} ₺/L → son 30 gün ${a1.toFixed(2)} ₺/L (${pc>=0?"+":""}${pc.toFixed(1)}%)${pc>10?". Sözleşmende mazot artış maddesi varsa fiyat güncellemesi isteyebilirsin.":""}</p>`};
   const dm=d=>d?d.slice(8)+"."+d.slice(5,7)+"."+d.slice(0,4):"",an={};AGN.forEach(a=>an[a.id]=a.name);
   const grp=AGN.filter(a=>PI.some(x=>x.agency_id==a.id)).map(a=>{const its=PI.filter(x=>x.agency_id==a.id),keys=[...new Set(its.map(x=>x.service+"|"+x.zone_a+"|"+x.zone_b+"|"+(x.valid_from||"")))],vf=its.find(x=>x.valid_from);
-    return `<h2 style="margin:12px 0 0">${esc(a.name)}</h2>${vf?`<p class="sub" style="margin:0">Sezon ${dm(vf.valid_from)}–${dm(vf.valid_to)}</p>`:""}${keys.map(k=>{const [s,za,zb]=k.split("|"),rs=its.filter(x=>x.service+"|"+x.zone_a+"|"+x.zone_b+"|"+(x.valid_from||"")==k).sort((p,q)=>(p.tier||999)-(q.tier||999));
+    return `<h2 style="margin:12px 0 0">${esc(a.name)}</h2>${vf?`<p class="sub" style="margin:0">Sezon ${dm(vf.valid_from)}–${dm(vf.valid_to)}</p>${fuelUp(vf.valid_from)}`:""}${keys.map(k=>{const [s,za,zb]=k.split("|"),rs=its.filter(x=>x.service+"|"+x.zone_a+"|"+x.zone_b+"|"+(x.valid_from||"")==k).sort((p,q)=>(p.tier||999)-(q.tier||999));
       return `<div class="pl"><b>${s=="transfer"?"Transfer":"Ara Transfer"}</b> · ${esc(zl(za))} ↔ ${esc(zl(zb))}<br>${rs.map(x=>`<span style="white-space:nowrap">${x.tier?x.tier+" kişilik":"kişi başı"} <b>${fc(x.amount,x.currency)}</b> <button class="x" style="min-height:0;padding:2px 6px" aria-label="Fiyatı sil" onclick="delItem('${x.id}')">×</button></span>`).join(" · ")}</div>`}).join("")}<div class="row"><button class="x" data-a="${esc(a.id)}" data-n="${esc(a.name)}" onclick="delAgencyPrices(this.dataset.a,this.dataset.n)">${esc(a.name)} fiyatlarını sil</button></div>`}).join("");
   const zo=Object.keys(ZL).map(z=>`<option value="${esc(ZL[z])}">`).join("");
   e.innerHTML=`<div class="card"><h2>Fiyat listeleri</h2><p class="sub">Acentanın fiyat listesini Excel olarak yükle ya da elle gir. Araç başı fiyatlarda işin kişi sayısına uyan en küçük kolon alınır (10 kişi → 15'lik, 1–5 kişi → 5). İş Shuttle ise kişi başı, Private ise araç başı fiyat kullanılır; işte seçilmemişse araç başı fiyat önceliklidir. Bodrum merkez için ayrı fiyat yoksa Yarımada fiyatı kullanılır. Turgutreis, Gümbet, Yalıkavak gibi yerler Bodrum Yarımada sayılır. Havalimanı varsa Transfer, yoksa Ara Transfer fiyatı kullanılır.</p>${grp||'<p class="sub">Henüz fiyat listesi yok.</p>'}
@@ -958,13 +961,25 @@ const dueTxt=k=>k<0?`<span class="neg">${-k} gün geçti</span>`:k<=30?`<span cl
 async function docsView(){
   const r=await sb.from("documents").select("id,vehicle_id,doc_type,due_date").eq("company_id",co.id).order("due_date"),e=$("#docs");if(!e||r.error)return;
   const D=r.data||[],vo=VEH.map(v=>`<option value="${v.id}">${esc(v.plate)}</option>`).join("");
-  e.innerHTML=`<div class="card"><h2>Belgeler ve bakım</h2><p class="sub">Süresi 30 gün içinde dolan belgeler ve bakımına 1.000 km'den az kalan araçlar Plan sekmesinde uyarı olarak çıkar. Km saati yakıt alımlarından güncellenir.</p>${VEH.map(v=>{const dd=D.filter(x=>x.vehicle_id==v.id),left=v.next_service_km&&v.odometer_km?v.next_service_km-v.odometer_km:null;
-    return `<div class="veh"><div><b>${esc(v.plate)}</b>${dd.map(x=>`<br>${esc(x.doc_type)} <span class="k">${x.due_date.slice(8)}.${x.due_date.slice(5,7)}.${x.due_date.slice(0,4)}</span> · ${dueTxt(dleft(x.due_date))} <button class="x" onclick="delDoc('${x.id}')">Sil</button>`).join("")||'<br><span class="k">Belge girilmedi</span>'}<br>Bakım: <input class="sm" style="width:120px" inputmode="numeric" placeholder="bakım km" aria-label="${esc(v.plate)} sonraki bakım km" value="${v.next_service_km||""}" data-id="${esc(v.id)}" onchange="setSvc(this.dataset.id,this.value)"> ${left==null?'<span class="k">km saati ya da bakım km yok</span>':left<0?`<span class="neg">${(-left).toLocaleString("tr-TR")} km geçti</span>`:left<=1000?`<span class="warn">${left.toLocaleString("tr-TR")} km kaldı</span>`:`<span class="k">${left.toLocaleString("tr-TR")} km kaldı</span>`}</div></div>`}).join("")||'<p class="sub">Önce araç ekle.</p>'}
+  e.innerHTML=`<div class="card"><h2>Belgeler ve bakım</h2><p class="sub">Süresi 30 gün içinde dolan belgeler ve bakımına 1.000 km'den az kalan araçlar Plan sekmesinde uyarı olarak çıkar. Km saati yakıt alımlarından güncellenir. Yaş sınırı çoğu acenta sözleşmesindeki gibi minibüs ve midibüste 7, otobüste (36 kişi ve üstü) 15 yaş alınır.</p>${VEH.map(v=>{const dd=D.filter(x=>x.vehicle_id==v.id),left=v.next_service_km&&v.odometer_km?v.next_service_km-v.odometer_km:null;
+    return `<div class="veh"><div><b>${esc(v.plate)}</b>${dd.map(x=>`<br>${esc(x.doc_type)} <span class="k">${x.due_date.slice(8)}.${x.due_date.slice(5,7)}.${x.due_date.slice(0,4)}</span> · ${dueTxt(dleft(x.due_date))} <button class="x" onclick="delDoc('${x.id}')">Sil</button>`).join("")||'<br><span class="k">Belge girilmedi</span>'}<br>Model yılı: <input class="sm" style="width:90px" inputmode="numeric" placeholder="yıl" aria-label="${esc(v.plate)} model yılı" value="${v.model_year||""}" data-id="${esc(v.id)}" onchange="setYear(this.dataset.id,this.value)"> ${ageTxt(v)}<br>Bakım: <input class="sm" style="width:120px" inputmode="numeric" placeholder="bakım km" aria-label="${esc(v.plate)} sonraki bakım km" value="${v.next_service_km||""}" data-id="${esc(v.id)}" onchange="setSvc(this.dataset.id,this.value)"> ${left==null?'<span class="k">km saati ya da bakım km yok</span>':left<0?`<span class="neg">${(-left).toLocaleString("tr-TR")} km geçti</span>`:left<=1000?`<span class="warn">${left.toLocaleString("tr-TR")} km kaldı</span>`:`<span class="k">${left.toLocaleString("tr-TR")} km kaldı</span>`}</div></div>`}).join("")||'<p class="sub">Önce araç ekle.</p>'}
   ${VEH.length?`<h2 style="margin:14px 0 0">Belge ekle</h2><div class="f2"><div><label>Araç</label><select id="dv">${vo}</select></div><div><label>Tür</label><select id="dt">${DTY.map(x=>`<option>${x}</option>`).join("")}</select></div><div><label>Bitiş tarihi</label><input id="dd" type="date"></div></div><div class="row"><button onclick="addDoc()">Belgeyi kaydet</button></div><p id="dmsg" class="sub" role="status"></p>`:""}</div>`;
 }
 async function addDoc(){const d=$("#dd").value,e=$("#dmsg");if(!d){e.textContent="Bitiş tarihini seç.";e.className="sub bad";return}
   const r=await sb.from("documents").insert({company_id:co.id,vehicle_id:$("#dv").value,doc_type:$("#dt").value,due_date:d});if(r.error){e.textContent=errText(r.error);e.className="sub bad";return}await vehiclesView("v")}
 async function delDoc(id){if(!confirm("Bu belge kaydı silinsin mi?"))return;const r=await sb.from("documents").delete().eq("id",id);if(r.error){alert(errText(r.error));return}await vehiclesView("v")}
+const ageLim=v=>(v.capacity||0)>35?15:7;
+function ageTxt(v){if(!v.model_year)return '<span class="k">yaş bilinmiyor</span>';const a=new Date().getFullYear()-v.model_year,l=ageLim(v);
+  return a>l?`<span class="neg">${a} yaşında, sınır ${l}</span>`:a==l?`<span class="warn">${a} yaşında, gelecek sezon sınırı (${l}) aşar</span>`:`<span class="k">${a} yaşında · sınır ${l}</span>`}
+async function setYear(vid,val){const n=String(val).trim()===""?null:num(val),y=new Date().getFullYear();if(n!==null&&(n<1980||n>y+1)){alert("Geçerli bir model yılı yaz (ör. 2019).");return}
+  const r=await sb.from("vehicles").update({model_year:n}).eq("id",vid);if(r.error){alert(errText(r.error));return}await vehiclesView("v")}
+async function backupAll(){
+  const T=["vehicles","drivers","agencies","jobs","job_stops","job_passengers","price_items","fuel_logs","expenses","vehicle_km","documents","ledger_entries","region_durations","job_audit_log","company_members"],out={uygulama:"Filo Takip",firma:co.name,tarih:new Date().toISOString(),tablolar:{}};
+  try{for(const t of T){const rows=[];for(let i=0;i<200000;i+=1000){const r=await (t=="job_stops"||t=="job_passengers"?sb.from(t).select("*").range(i,i+999):sb.from(t).select("*").eq("company_id",co.id).range(i,i+999));if(r.error){if(i==0){out.tablolar[t]={hata:errText(r.error)};break}throw r.error}rows.push(...(r.data||[]));if((r.data||[]).length<1000)break}
+    if(!out.tablolar[t])out.tablolar[t]=rows}}catch(e){say("Yedek alınamadı: "+errText(e),true);return}
+  const n=Object.values(out.tablolar).reduce((s,x)=>s+(Array.isArray(x)?x.length:0),0),a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,1)],{type:"application/json"}));a.download="filo-takip-yedek-"+today()+".json";document.body.appendChild(a);a.click();a.remove();
+  say(n+" kayıt yedeklendi. Dosyayı Drive'a ya da e-postana kaydet");
+}
 async function setSvc(vid,val){const n=String(val).trim()===""?null:num(val);if(n!==null&&n<0){alert("Geçerli bir km yaz.");return}
   const r=await sb.from("vehicles").update({next_service_km:n===null?null:Math.round(n)}).eq("id",vid);if(r.error){alert(errText(r.error));return}await vehiclesView("v")}
 async function setCap(vid,val){
@@ -1023,8 +1038,62 @@ async function cariTab(){
   if(!need(b))return;
   const bal={};(b.data||[]).forEach(x=>{if(Number(x.balance)!=0)(bal[x.agency_id]=bal[x.agency_id]||[]).push(x)});
   const list=AGN.filter(a=>bal[a.id]).map(a=>`<div class="veh"><div><b>${esc(a.name)}</b><br>${bal[a.id].map(x=>`<span class="${x.balance>0?"pos":"neg"}">${fc(Math.abs(x.balance),x.currency)} ${x.balance>0?"bize borçlu":"biz borçluyuz"}</span> <button class="x" data-c="${esc(x.currency)}" data-b="${Number(x.balance)}" onclick="settle('a','${a.id}',this.dataset.c,+this.dataset.b)">${x.balance>0?"Ödeme aldık":"Ödeme yaptık"}</button>`).join("<br>")}</div></div>`).join("")||`<p class="sub">Açık cari bakiye yok. İşleri tamamladıkça burada görünür.</p>`;
-  $("#tab").innerHTML=`<div class="card"><h2>Cari hesaplar</h2><p class="sub">Para birimleri ayrı ayrı tutulur, birbirine çevrilmez.</p>${list}</div><div id="pr"></div><div id="aud"></div>`;
-  priceView();auditView();
+  $("#tab").innerHTML=`<div class="card"><h2>Cari hesaplar</h2><p class="sub">Para birimleri ayrı ayrı tutulur, birbirine çevrilmez.</p>${list}</div><div id="stm"></div><div id="pr"></div><div id="aud"></div>`;
+  stmView();priceView();auditView();
+}
+let SF="",ST="",SA="",SD=null;
+const dmY=d=>d?d.slice(8)+"."+d.slice(5,7)+"."+d.slice(0,4):"";
+function stmRange(k){const n=new Date(),t=today();if(k=="15"){ST=t;SF=today(new Date(Date.now()-14*864e5))}else if(k=="ay"){ST=t;SF=t.slice(0,8)+"01"}else if(k=="gecen"){const a=new Date(n.getFullYear(),n.getMonth()-1,1),b=new Date(n.getFullYear(),n.getMonth(),0);SF=today(a);ST=today(b)}
+  else if(k=="yari"){const d=+t.slice(8);if(d>15){SF=t.slice(0,8)+"01";ST=t.slice(0,8)+"15"}else{const a=new Date(n.getFullYear(),n.getMonth()-1,16),b=new Date(n.getFullYear(),n.getMonth(),0);SF=today(a);ST=today(b)}}stmView()}
+function stmView(){
+  const e=$("#stm");if(!e)return;if(!SF){ST=today();SF=ST.slice(0,8)+"01"}if(!SA&&AGN.length)SA=AGN[0].id;
+  e.innerHTML=`<div class="card"><h2>Acenta dökümü</h2><p class="sub">Seçtiğin tarih aralığında acentaya yaptığın işler, kesintiler ve alınan ödemeler. Acentaya PDF olarak gönderebilir, Excel'de açabilirsin.</p>
+  <div class="f2"><div><label>Acenta</label><select id="sa" onchange="SA=this.value;SD=null;$('#sres').innerHTML=''">${AGN.map(a=>`<option value="${a.id}" ${a.id==SA?"selected":""}>${esc(a.name)}</option>`).join("")}</select></div><div></div><div><label>Başlangıç</label><input id="sf" type="date" value="${SF}" onchange="SF=this.value"></div><div><label>Bitiş</label><input id="stt" type="date" value="${ST}" onchange="ST=this.value"></div></div>
+  <div class="row"><button class="alt" onclick="stmRange('yari')">Son 15'lik dönem</button><button class="alt" onclick="stmRange('15')">Son 15 gün</button><button class="alt" onclick="stmRange('ay')">Bu ay</button><button class="alt" onclick="stmRange('gecen')">Geçen ay</button></div>
+  <div class="row"><button onclick="makeStm()">Dökümü hazırla</button></div><div id="sres" aria-live="polite"></div>
+  <details><summary>Kesinti ya da ceza ekle</summary><p class="sub">Acentanın senden kestiği tutarlar (geç kalma taksisi, operatör cezası vb.). Acentanın borcundan düşülür ve dökümde görünür.</p><div class="f2"><div><label>Tarih</label><input id="kd2" type="date" value="${today()}"></div><div><label>Tutar</label><input id="ka2" inputmode="decimal"></div><div><label>Para birimi</label><select id="kc2"><option>TRY</option><option>EUR</option><option>USD</option><option>GBP</option></select></div><div><label>Açıklama</label><input id="kn2" placeholder="ör. 12.07 geç kalma, taksi"></div></div><div class="row"><button onclick="addCut()">Kesintiyi kaydet</button></div></details></div>`;
+  if(!AGN.length)e.innerHTML='<div class="card"><h2>Acenta dökümü</h2><p class="sub">Henüz acenta yok. İş eklerken acenta adı yazınca burada görünür.</p></div>';
+}
+async function addCut(){
+  const a=num($("#ka2").value),n=$("#kn2").value.trim(),d=$("#kd2").value;if(!SA){alert("Önce acenta seç.");return}if(a==null||a<=0){alert("Kesinti tutarını yaz.");return}if(!n){alert("Kısa bir açıklama yaz.");return}
+  const r=await sb.from("ledger_entries").insert({company_id:co.id,agency_id:SA,currency:$("#kc2").value,amount:-a,kind:"duzeltme",note:"Kesinti: "+n,entry_date:d||today()});if(r.error){alert(errText(r.error));return}
+  $("#ka2").value="";$("#kn2").value="";await stmLoad();
+}
+async function makeStm(){await stmLoad()}
+async function stmLoad(){
+  const e=$("#sres");if(!SA){e.innerHTML='<p class="sub bad">Acenta seç.</p>';return}if(!SF||!ST||SF>ST){e.innerHTML='<p class="sub bad">Tarih aralığını kontrol et.</p>';return}e.innerHTML='<p class="sub">Hazırlanıyor…</p>';
+  const [jr,lr]=await Promise.all([sb.from("jobs").select("id,job_date,pickup_time,job_type,from_city,to_city,pax,run_code,guest_name,flight_no,service_mode,amount,currency,status,collection_mode,vehicle_id").eq("company_id",co.id).eq("agency_id",SA).gte("job_date",SF).lte("job_date",ST).order("job_date").order("pickup_time").limit(5000),
+    sb.from("ledger_entries").select("id,kind,amount,currency,note,entry_date").eq("company_id",co.id).eq("agency_id",SA).in("kind",["duzeltme","odeme","tahsilat"]).gte("entry_date",SF).lte("entry_date",ST).order("entry_date").limit(2000)]);
+  if(jr.error||lr.error){e.innerHTML=`<p class="sub bad">${esc(errText(jr.error||lr.error))}</p>`;return}
+  const all=jr.data||[],J=all.filter(j=>j.collection_mode=="acenta_cari"),cash=all.length-J.length,L=lr.data||[],cuts=L.filter(x=>x.kind=="duzeltme"),pays=L.filter(x=>x.kind!="duzeltme");
+  const T={},add=(c,k,v)=>{(T[c]=T[c]||{is:0,kes:0,od:0})[k]+=v};J.forEach(j=>add(j.currency||"TRY","is",Number(j.amount)||0));cuts.forEach(x=>add(x.currency,"kes",Number(x.amount)));pays.forEach(x=>add(x.currency,"od",Number(x.amount)));
+  const np=J.filter(j=>!Number(j.amount)).length,open=J.filter(j=>j.status!="tamamlandi").length,an=(AGN.find(a=>a.id==SA)||{}).name||"";
+  SD={an,J,cuts,pays,T,from:SF,to:ST};
+  e.innerHTML=`<div class="pl"><b>${esc(an)}</b> · ${dmY(SF)}–${dmY(ST)} · ${J.length} iş${J.reduce((s,j)=>s+(j.pax||0),0)?" · "+J.reduce((s,j)=>s+(j.pax||0),0)+" kişi":""}</div>${Object.keys(T).map(c=>{const t=T[c];return `<div class="pl">${c}: işler <b>${fc(t.is,c)}</b>${t.kes?` · kesinti <span class="neg">${fc(-t.kes,c)}</span>`:""} · net <b>${fc(t.is+t.kes,c)}</b>${t.od?` · bu aralıkta alınan ödeme ${fc(-t.od,c)}`:""}</div>`}).join("")}
+  ${np?`<p class="sub warn">${np} işin fiyatı girilmemiş; dökümde "fiyatsız" yazar. Önce fiyat listesinden uygulamak isteyebilirsin.</p>`:""}${open?`<p class="sub warn">${open} iş henüz tamamlanmadı olarak işaretli.</p>`:""}${cash?`<p class="sub">Misafirden nakit alınan ${cash} iş dökümde yok.</p>`:""}
+  ${J.length||cuts.length?`<div class="row"><button onclick="stmPdf()">PDF hazırla / paylaş</button><button class="alt" onclick="stmCsv()">Excel için indir</button></div>`:'<p class="sub">Bu aralıkta acentaya ait iş yok.</p>'}`;
+}
+const MOD={shuttle:"Shuttle",private:"Private"},TLS={varis:"Arrival",depar:"Depar",transfer:"Ara Transfer"};
+function stmRows(){const D=SD,r=[["Tarih","Saat","Tür","İş kodu","Güzergah","Kişi","Shuttle/Private","Uçuş","Misafir","Tutar","Para birimi","Durum"]];
+  D.J.forEach(j=>r.push([dmY(j.job_date),(j.pickup_time||"").slice(0,5),TLS[j.job_type]||"",j.run_code||"",(j.from_city||"?")+" → "+(j.to_city||"?"),j.pax||"",MOD[j.service_mode]||"",j.flight_no||"",j.guest_name||"",Number(j.amount)?Number(j.amount).toFixed(2).replace(".",","):"fiyatsız",j.currency||"",j.status=="tamamlandi"?"tamamlandı":"bekliyor"]));
+  D.cuts.forEach(x=>r.push([dmY(x.entry_date),"","Kesinti","",(x.note||"").replace(/^Kesinti: /,""),"","","","",Number(x.amount).toFixed(2).replace(".",","),x.currency,""]));return r}
+function stmName(ext){return ("dokum-"+SD.an+"-"+SD.from+"-"+SD.to).normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/ı/g,"i").replace(/[^\w-]+/g,"-")+"."+ext}
+function stmCsv(){if(!SD)return;const csv="﻿"+stmRows().map(x=>x.map(c=>{c=String(c==null?"":c);return /[;"\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(";")).join("\r\n")+"\r\n"+Object.keys(SD.T).map(c=>";;;;Toplam "+c+";;;;;"+(SD.T[c].is+SD.T[c].kes).toFixed(2).replace(".",",")+";"+c).join("\r\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download=stmName("csv");document.body.appendChild(a);a.click();a.remove();say("Döküm indirildi, Excel ile açabilirsin")}
+async function stmPdf(){
+  if(!SD)return;const D=SD,W=1240,H=1754,P=60,F=(s,w)=>`${w||400} ${s}px -apple-system,"Segoe UI",Roboto,Arial,sans-serif`,cols=[[0,120,"Tarih"],[120,80,"Saat"],[200,150,"Tür"],[350,110,"Kod"],[460,390,"Güzergah"],[850,70,"Kişi"],[920,90,"Tip"],[1010,110,"Tutar"]];
+  const rows=D.J.map(j=>[dmY(j.job_date).slice(0,5),(j.pickup_time||"").slice(0,5),TLS[j.job_type]||"",j.run_code||"",(j.from_city||"?")+" → "+(j.to_city||"?"),String(j.pax||""),MOD[j.service_mode]||"",Number(j.amount)?fc(j.amount,j.currency):"fiyatsız"]).concat(D.cuts.map(x=>[dmY(x.entry_date).slice(0,5),"","Kesinti","",(x.note||"").replace(/^Kesinti: /,""),"","",fc(x.amount,x.currency)]));
+  const per=38,pages=[],np=Math.max(1,Math.ceil((rows.length+Object.keys(D.T).length*2+3)/per));
+  for(let pi=0;pi<np;pi++){const c=document.createElement("canvas");c.width=W;c.height=H;const x=c.getContext("2d");x.textBaseline="top";x.fillStyle="#fff";x.fillRect(0,0,W,H);
+    x.fillStyle="#0d6b5c";x.fillRect(0,0,W,150);x.fillStyle="#fff";x.font=F(44,700);x.fillText("Döküm · "+D.an,P,34);x.font=F(28);x.fillText(`${co.name||""}   ·   ${dmY(D.from)} – ${dmY(D.to)}   ·   sayfa ${pi+1}/${np}`,P,96);
+    let y=180;x.font=F(22,700);x.fillStyle="#5b6776";cols.forEach(k=>x.fillText(k[2],P+k[0],y));y+=34;x.fillStyle="#d9dfe6";x.fillRect(P,y-6,W-2*P,2);
+    const fit=(t,w)=>{t=String(t);if(x.measureText(t).width<=w-10)return t;while(t.length>1&&x.measureText(t+"…").width>w-10)t=t.slice(0,-1);return t+"…"};
+    rows.slice(pi*per,(pi+1)*per).forEach((r,i)=>{if(i%2){x.fillStyle="#f3f6f8";x.fillRect(P,y-4,W-2*P,36)}x.font=F(22);x.fillStyle=r[2]=="Kesinti"?"#b83a2b":"#16202b";cols.forEach((k,ci)=>x.fillText(fit(r[ci],k[1]),P+k[0],y));y+=36});
+    if(pi==np-1){y+=24;x.fillStyle="#d9dfe6";x.fillRect(P,y,W-2*P,2);y+=20;x.fillStyle="#16202b";
+      Object.keys(D.T).forEach(cu=>{const t=D.T[cu];x.font=F(26);x.fillText(`İşler (${cu}): ${fc(t.is,cu)}${t.kes?"   ·   Kesinti: "+fc(t.kes,cu):""}`,P,y);y+=40;x.font=F(30,700);x.fillText(`Net: ${fc(t.is+t.kes,cu)}`,P,y);y+=54});
+      x.font=F(22);x.fillStyle="#5b6776";x.fillText(`${D.J.length} iş. Tutarlar KDV dahil liste fiyatlarıdır; itiraz edilen satırları bildirmenizi rica ederiz.`,P,H-70)}
+    const jb=await new Promise((ok,no)=>c.toBlob(b=>b?ok(b):no(new Error("Görsel oluşturulamadı")),"image/jpeg",0.88));pages.push({jpg:new Uint8Array(await jb.arrayBuffer()),w:W,h:H})}
+  try{await shareFile(pdfFromPages(pages),stmName("pdf"),"Döküm "+D.an)}catch(e){say("PDF hazırlanamadı: "+errText(e),true)}
 }
 async function auditView(){
   const r=await sb.from("job_audit_log").select("action,job_label,old_amount,old_currency,new_amount,new_currency,email,created_at").eq("company_id",co.id).order("created_at",{ascending:false}).limit(40),e=$("#aud");if(!e||r.error)return;
@@ -1054,6 +1123,6 @@ async function delVeh(id,plate){
   if(r.error){alert("Silinemedi: bu araca bağlı sefer ya da kayıtlar olabilir.");return}
   await vehiclesView();
 }
-for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD","savePaste","readPaste","undoJob","setCap","makeInvite","delInvite","delMember","joinInvite","savePw","resetPw","addFuel","addExp","delFuel","delExp","applyPrices","saveKm","sendDay","addDoc","delDoc","setSvc","saveFuelX","setMode","savePriceX","addItem","delItem","delAgencyPrices"])globalThis[n]=once(n,globalThis[n]);
+for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD","savePaste","readPaste","undoJob","setCap","makeInvite","delInvite","delMember","joinInvite","savePw","resetPw","addFuel","addExp","delFuel","delExp","applyPrices","saveKm","sendDay","addDoc","delDoc","setSvc","saveFuelX","setMode","savePriceX","makeStm","stmPdf","addCut","setYear","backupAll","addItem","delItem","delAgencyPrices"])globalThis[n]=once(n,globalThis[n]);
 boot().catch(e=>{$("#app").innerHTML=`<p class="bad">Uygulama açılamadı: ${esc(e.message)}. Bağlantını kontrol edip sayfayı yenile.</p>`});
 </script></body></html>
