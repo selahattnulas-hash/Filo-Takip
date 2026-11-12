@@ -61,7 +61,7 @@ const need=(...rs)=>{const e=rs.find(r=>r&&r.error);if(!e)return true;$("#tab").
 let BUSY=false,GEN=0,JF="acik";
 const errText=e=>{const m=String(e&&e.message||e);return /fetch|network|load failed/i.test(m)?"Bağlantı yok gibi görünüyor. İnternetini kontrol edip tekrar dene.":/jwt|token|401/i.test(m)?"Oturum süresi dolmuş. Sayfayı yenileyip tekrar giriş yap.":/row-level security|permission denied/i.test(m)?"Bu işlem için yetkin yok.":/foreign key/i.test(m)?"Bu kayıt başka kayıtlara bağlı olduğu için değiştirilemedi.":m};
 const say=(t,bad)=>{const e=$("#st");if(!e)return;clearTimeout(say.t);e.textContent=t||"";e.className="st"+(t?" on":"")+(bad?" bad":"");if(t&&t!="İşleniyor…"){say.t=setTimeout(()=>{e.className="st"},3500);if(say.t.unref)say.t.unref()}};
-const DONE={addTrip:"Sefer kaydedildi",addJob:"İş kaydedildi",importAll:"Liste içe aktarıldı",settle:"Ödeme işlendi",markPaid:"Tahsilat işlendi",makeCompany:"Firma oluşturuldu",addVeh:"Araç kaydedildi",addDrv:"Şoför kaydedildi",doneJob:"İş tamamlandı. Yanlışsa Tümü listesinden geri alabilirsin",undoJob:"İş yeniden açıldı, kasa ve cari kayıtları geri alındı",setAmt:"Fiyat kaydedildi",delJob:"İş silindi",delTrip:"Sefer silindi",delVeh:"Araç silindi",delDrv:"Şoför silindi",setEnd:"Bitiş saati kaydedildi",setRD:"Süre kaydedildi",setCap:"Kapasite kaydedildi",addDoc:"Belge kaydedildi",delDoc:"Belge silindi",setSvc:"Bakım km kaydedildi",saveKm:"Takip km'leri kaydedildi",setCls:"Araç sınıfı kaydedildi",addRule:"Fiyat kuralı kaydedildi",delRule:"Fiyat kuralı silindi",addFuel:"Yakıt kaydedildi",addExp:"Gider kaydedildi",delFuel:"Yakıt kaydı silindi",delExp:"Gider silindi",makeInvite:"Davet kodu oluşturuldu",delInvite:"Davet kodu iptal edildi",delMember:"Kullanıcı firmadan çıkarıldı",joinInvite:"Firmaya katıldın",savePw:"Şifren değişti",savePaste:"İşler kaydedildi"};
+const DONE={addTrip:"Sefer kaydedildi",addJob:"İş kaydedildi",importAll:"Liste içe aktarıldı",settle:"Ödeme işlendi",markPaid:"Tahsilat işlendi",makeCompany:"Firma oluşturuldu",addVeh:"Araç kaydedildi",addDrv:"Şoför kaydedildi",doneJob:"İş tamamlandı. Yanlışsa Tümü listesinden geri alabilirsin",undoJob:"İş yeniden açıldı, kasa ve cari kayıtları geri alındı",setAmt:"Fiyat kaydedildi",delJob:"İş silindi",delTrip:"Sefer silindi",delVeh:"Araç silindi",delDrv:"Şoför silindi",setEnd:"Bitiş saati kaydedildi",setRD:"Süre kaydedildi",setCap:"Kapasite kaydedildi",addDoc:"Belge kaydedildi",addItem:"Fiyat kaydedildi",delItem:"Fiyat silindi",delAgencyPrices:"Acentanın fiyatları silindi",savePriceX:"Fiyat listesi kaydedildi",delDoc:"Belge silindi",setSvc:"Bakım km kaydedildi",saveKm:"Takip km'leri kaydedildi",addFuel:"Yakıt kaydedildi",addExp:"Gider kaydedildi",delFuel:"Yakıt kaydı silindi",delExp:"Gider silindi",makeInvite:"Davet kodu oluşturuldu",delInvite:"Davet kodu iptal edildi",delMember:"Kullanıcı firmadan çıkarıldı",joinInvite:"Firmaya katıldın",savePw:"Şifren değişti",savePaste:"İşler kaydedildi"};
 const once=(n,f)=>async(...a)=>{if(BUSY)return;BUSY=true;const g=GEN,tm=setTimeout(()=>say("İşleniyor…"),400);try{const r=await f(...a);clearTimeout(tm);if(GEN!==g)say(DONE[n]||"Kaydedildi");else if($("#st").textContent=="İşleniyor…")say("");return r}catch(e){clearTimeout(tm);say(errText(e),true)}finally{BUSY=false}};
 function msg(t,bad){const m=$("#msg");if(m){m.textContent=t||"";m.className=bad?"bad":"ok"}}
 let user=null,co=null,ROLE="owner";
@@ -176,18 +176,18 @@ async function panelTab(){
     sb.from("jobs").select("vehicle_id,job_date,pickup_time,job_type,from_city,to_city,job_stops(seq,region,place)").eq("company_id",co.id).not("vehicle_id","is",null).gte("job_date",PF).lte("job_date",PT).limit(5000),
     sb.from("vehicle_km").select("vehicle_id,date_from,date_to,km,source,first_on,last_off").eq("company_id",co.id).gte("date_from",PF).lte("date_to",PT).limit(5000)]);
   if(g0!==GEN||!need(jr,fr,er,tr,ar))return;
-  const AJ=ar.data||[],VK=kr&&!kr.error?kr.data||[]:[];
+  const AJ=ar.data||[],VK=kr&&!kr.error?kr.data||[]:[],rkOf=id=>(a=>{const d=a.filter(y=>y.date_from==y.date_to),u=d.length?d:a;return u.length?u.reduce((s,y)=>s+Number(y.km),0):null})(VK.filter(y=>y.vehicle_id==id));
   const J=jr.data||[],F=fr.data||[],E=er.data||[],T=tr.data||[],FX={},gen=E.filter(x=>!x.vehicle_id).reduce((s,x)=>s+expIn(x,PF,PT),0);
   const rows=VEH.map(v=>{const jt=J.filter(x=>x.vehicle_id==v.id),fl=F.filter(x=>x.vehicle_id==v.id),t=T.filter(x=>x.vehicle_id==v.id),fx={};let g=sum(t,"revenue");
     jt.forEach(x=>{const n=Number(x.amount||0)-Number(x.partner_share||0);if(x.currency=="TRY")g+=n;else{fx[x.currency]=(fx[x.currency]||0)+n;FX[x.currency]=(FX[x.currency]||0)+n}});
     const fuel=sum(fl,"amount")+sum(t,"fuel_cost"),fixed=Number(v.monthly_fixed_cost||0)*nd/30,ex=E.filter(x=>x.vehicle_id==v.id).reduce((s,x)=>s+expIn(x,PF,PT),0)+sum(t,"other_cost"),cost=fuel+fixed+ex;
     const ol=fl.filter(x=>x.odometer_km).sort((p,q)=>p.odometer_km-q.odometer_km),okm=ol.length>1?ol[ol.length-1].odometer_km-ol[0].odometer_km:0,km=okm+sum(t,"km"),lit=(okm?ol.slice(1).reduce((s,x)=>s+Number(x.liters),0):0)+sum(t,"fuel_liters");
-    return{v,g,fuel,fixed,ex,cost,net:g-cost,km,l:km?lit/km*100:0,jobs:jt.length+t.length,fx,dd:vehKm(v,AJ.filter(x=>x.vehicle_id==v.id)),rk:(a=>{const d=a.filter(y=>y.date_from==y.date_to),u=d.length?d:a;return u.length?u.reduce((s,y)=>s+Number(y.km),0):null})(VK.filter(y=>y.vehicle_id==v.id))}});
+    return{v,g,fuel,fixed,ex,cost,net:g-cost,km,l:km?lit/km*100:(x=>x?sum(fl,"liters")/x*100:0)(rkOf(v.id)),lsrc:km?"km saati":rkOf(v.id)&&sum(fl,"liters")?"takip km":"",jobs:jt.length+t.length,fx,dd:vehKm(v,AJ.filter(x=>x.vehicle_id==v.id)),rk:(a=>{const d=a.filter(y=>y.date_from==y.date_to),u=d.length?d:a;return u.length?u.reduce((s,y)=>s+Number(y.km),0):null})(VK.filter(y=>y.vehicle_id==v.id))}});
   const FPP=fuelPrice(F);
   const G=sum(rows,"g"),C=sum(rows,"cost")+gen,fxs=o=>Object.keys(o).filter(c=>o[c]).map(c=>fc(o[c],c)).join(" + ");
   $("#tab").innerHTML=`<div class="card"><div class="f2"><div><label>Başlangıç</label><input type="date" value="${PF}" onchange="PF=this.value;vehiclesView('p')"></div><div><label>Bitiş</label><input type="date" value="${PT}" onchange="PT=this.value;vehiclesView('p')"></div></div><p class="sub" style="margin:8px 0 0">${nd} günlük dönem. Gelir tamamlanan işlerden gelir (işi atana verilen pay düşülür). Aylık giderler gün sayısına göre paylaştırılır.</p></div>
   <div class="sum"><div><span class="k">Gelir</span><b>${fm(G)}</b></div><div><span class="k">Gider</span><b>${fm(C)}</b></div><div><span class="k">Net</span><b class="${G-C>=0?"pos":"neg"}">${fm(G-C)}</b></div></div>${gen?`<p class="sub">Araca bağlı olmayan genel giderler: ${fm(gen)} (toplam gidere dahil)</p>`:""}${fxs(FX)?`<p class="sub warn">Dövizli gelir ayrıca: ${fxs(FX)} (₺ toplamına dahil değil)</p>`:""}`+
-  rows.map(x=>{const hi=x.v.base_consumption&&x.l>x.v.base_consumption*1.1;return `<div class="card"><div class="top"><b>${esc(x.v.plate)}</b><span class="${x.net>=0?"pos":"neg"}">${fm(x.net)} net</span></div>${fxs(x.fx)?`<span class="k">+ ${fxs(x.fx)} dövizli gelir</span>`:""}<div class="g2"><div><span class="k">Gelir</span><br><b>${fm(x.g)}</b></div><div><span class="k">Toplam maliyet</span><br><b>${fm(x.cost)}</b></div><div><span class="k">Yakıt</span><br><b>${fm(x.fuel)}</b></div><div><span class="k">Sabit ve diğer gider</span><br><b>${fm(x.fixed+x.ex)}</b></div><div><span class="k">Gün başı maliyet</span><br><b>${fm(x.cost/nd)}</b></div><div><span class="k">İş başı maliyet</span><br><b>${x.jobs?fm(x.cost/x.jobs):"-"} <span class="k">(${x.jobs} iş)</span></b></div><div><span class="k">Km başı maliyet</span><br><b>${x.km?(x.cost/x.km).toFixed(1)+" ₺":x.rk?(x.cost/x.rk).toFixed(1)+" ₺":"-"}</b></div><div><span class="k">L/100 km</span><br><b class="${hi?"warn":""}">${x.l?x.l.toFixed(1):"-"}${hi?" (yüksek)":""}</b></div><div><span class="k">Dolu / boş km (tahmini)</span><br><b>${x.dd.load} / ${x.dd.dead}</b></div><div><span class="k">Takip km${(s=>s?" ("+esc(s)+")":"")([...new Set(VK.filter(y=>y.vehicle_id==x.v.id).map(y=>y.source))].join(", "))}</span><br><b>${x.rk!=null?Math.round(x.rk).toLocaleString("tr-TR"):"-"}</b></div><div><span class="k">İşsiz km (takip − dolu)</span><br><b class="${x.rk!=null&&x.rk>0&&(x.rk-x.dd.load)/x.rk>.35?"warn":""}">${x.rk!=null?Math.max(0,Math.round(x.rk-x.dd.load)).toLocaleString("tr-TR")+(x.rk>0?" (%"+Math.round(Math.max(0,x.rk-x.dd.load)*100/x.rk)+")":""):"-"}</b></div><div><span class="k">Boş km oranı</span><br><b class="${x.dd.load+x.dd.dead&&x.dd.dead/(x.dd.load+x.dd.dead)>.35?"warn":""}">${x.dd.load+x.dd.dead?"%"+Math.round(x.dd.dead*100/(x.dd.load+x.dd.dead)):"-"}</b></div><div><span class="k">Boş sürüş yakıtı (tahmini)</span><br><b>${FPP&&x.dd.dead?fm(x.dd.dead*lpk(x.v)*FPP):"-"}</b></div></div>${cmpRows(x.v,AJ,VK)}${x.dd.miss.size?`<p class="sub warn" style="margin:6px 0 0">Konumu bilinmeyen bölgeler km hesabına girmedi: ${esc([...x.dd.miss].join(", "))}</p>`:""}</div>`}).join("")+`<p class="sub">Takip km: günlük kayıt varsa günlükler toplanır, yoksa aralık kaydı kullanılır; ikisi birlikte sayılmaz. Boş sürüş yakıtı, tahmini boş km × aracın ortalama tüketimi × dönemdeki ortalama litre fiyatıyla hesaplanır ve yakıt giderinin içindeki payı gösterir; gidere ayrıca eklenmez. Km ve yakıt ortalaması, Maliyet sekmesinde girilen yakıt alımlarının km saatinden hesaplanır; dönemde en az iki alım gerekir.</p>`;
+  rows.map(x=>{const hi=x.v.base_consumption&&x.l>x.v.base_consumption*1.1;return `<div class="card"><div class="top"><b>${esc(x.v.plate)}</b><span class="${x.net>=0?"pos":"neg"}">${fm(x.net)} net</span></div>${fxs(x.fx)?`<span class="k">+ ${fxs(x.fx)} dövizli gelir</span>`:""}<div class="g2"><div><span class="k">Gelir</span><br><b>${fm(x.g)}</b></div><div><span class="k">Toplam maliyet</span><br><b>${fm(x.cost)}</b></div><div><span class="k">Yakıt</span><br><b>${fm(x.fuel)}</b></div><div><span class="k">Sabit ve diğer gider</span><br><b>${fm(x.fixed+x.ex)}</b></div><div><span class="k">Gün başı maliyet</span><br><b>${fm(x.cost/nd)}</b></div><div><span class="k">İş başı maliyet</span><br><b>${x.jobs?fm(x.cost/x.jobs):"-"} <span class="k">(${x.jobs} iş)</span></b></div><div><span class="k">Km başı maliyet</span><br><b>${x.km?(x.cost/x.km).toFixed(1)+" ₺":x.rk?(x.cost/x.rk).toFixed(1)+" ₺":"-"}</b></div><div><span class="k">L/100 km${x.lsrc?" ("+x.lsrc+")":""}</span><br><b class="${hi?"warn":""}">${x.l?x.l.toFixed(1):"-"}${hi?" (yüksek)":""}</b></div><div><span class="k">Dolu / boş km (tahmini)</span><br><b>${x.dd.load} / ${x.dd.dead}</b></div><div><span class="k">Takip km${(s=>s?" ("+esc(s)+")":"")([...new Set(VK.filter(y=>y.vehicle_id==x.v.id).map(y=>y.source))].join(", "))}</span><br><b>${x.rk!=null?Math.round(x.rk).toLocaleString("tr-TR"):"-"}</b></div><div><span class="k">İşsiz km (takip − dolu)</span><br><b class="${x.rk!=null&&x.rk>0&&(x.rk-x.dd.load)/x.rk>.35?"warn":""}">${x.rk!=null?Math.max(0,Math.round(x.rk-x.dd.load)).toLocaleString("tr-TR")+(x.rk>0?" (%"+Math.round(Math.max(0,x.rk-x.dd.load)*100/x.rk)+")":""):"-"}</b></div><div><span class="k">Boş km oranı</span><br><b class="${x.dd.load+x.dd.dead&&x.dd.dead/(x.dd.load+x.dd.dead)>.35?"warn":""}">${x.dd.load+x.dd.dead?"%"+Math.round(x.dd.dead*100/(x.dd.load+x.dd.dead)):"-"}</b></div><div><span class="k">Boş sürüş yakıtı (tahmini)</span><br><b>${FPP&&x.dd.dead?fm(x.dd.dead*lpk(x.v)*FPP):"-"}</b></div></div>${cmpRows(x.v,AJ,VK)}${x.dd.miss.size?`<p class="sub warn" style="margin:6px 0 0">Konumu bilinmeyen bölgeler km hesabına girmedi: ${esc([...x.dd.miss].join(", "))}</p>`:""}</div>`}).join("")+`<p class="sub">Takip km: günlük kayıt varsa günlükler toplanır, yoksa aralık kaydı kullanılır; ikisi birlikte sayılmaz. Boş sürüş yakıtı, tahmini boş km × aracın ortalama tüketimi × dönemdeki ortalama litre fiyatıyla hesaplanır ve yakıt giderinin içindeki payı gösterir; gidere ayrıca eklenmez. Km ve yakıt ortalaması, Maliyet sekmesinde girilen yakıt alımlarının km saatinden hesaplanır; dönemde en az iki alım gerekir.</p>`;
 }
 const ECAT=["Personel","Sigorta","Bakım ve onarım","Kredi ya da kiralama","Lastik","Vergi ve harç","Ofis","Diğer"],EPER={aylik:"aylık",gunluk:"günlük",tek_sefer:"tek sefer"};
 async function costTab(){
@@ -196,7 +196,7 @@ async function costTab(){
   const pv={};VEH.forEach(v=>pv[v.id]=v.plate);const F=fr.data||[],E=er.data||[],l100={};
   VEH.forEach(v=>{const a=F.filter(x=>x.vehicle_id==v.id&&x.odometer_km).sort((p,q)=>p.odometer_km-q.odometer_km);for(let i=1;i<a.length;i++){const d=a[i].odometer_km-a[i-1].odometer_km;if(d>0)l100[a[i].id]=a[i].liters/d*100}});
   const vo=VEH.map(v=>`<option value="${v.id}">${esc(v.plate)}</option>`).join(""),dm=d=>d.slice(8)+"."+d.slice(5,7);
-  $("#tab").innerHTML=`<div class="card"><h2>Yakıt alımı ekle</h2>${VEH.length?`<label>Araç</label><select id="fv">${vo}</select><div class="f2"><div><label>Tarih</label><input id="fd" type="date" value="${today()}"></div><div><label>Litre</label><input id="fl" inputmode="decimal"></div><div><label>Tutar (₺)</label><input id="fa" inputmode="decimal"></div><div><label>Km saati</label><input id="fo" inputmode="numeric"></div></div><div class="row"><button onclick="addFuel()">Yakıtı kaydet</button></div><p id="msg" class="sub" role="status"></p>`:`<p class="sub">Yakıt girmek için önce araç ekle.</p><button onclick="vehiclesView('v')">Araç ekle</button>`}</div>
+  $("#tab").innerHTML=`<div class="card"><h2>Yakıt alımı ekle</h2>${VEH.length?`<label>Araç</label><select id="fv">${vo}</select><div class="f2"><div><label>Tarih</label><input id="fd" type="date" value="${today()}"></div><div><label>Litre</label><input id="fl" inputmode="decimal"></div><div><label>Tutar (₺)</label><input id="fa" inputmode="decimal"></div><div><label>Km saati</label><input id="fo" inputmode="numeric"></div></div><div class="row"><button onclick="addFuel()">Yakıtı kaydet</button></div><p id="msg" class="sub" role="status"></p><h2 style="margin:16px 0 0">Yakıt ekstresi yükle</h2><p class="sub">Shell ya da başka akaryakıt firmasının tüketim raporu (Excel). Plakalar araçlarınla eşleşir; aynı dosya tekrar yüklenirse alımlar ikinci kez eklenmez.</p><input type="file" id="fx2" accept=".xlsx" aria-label="Yakıt ekstresi" onchange="readFuelX(this)"><p id="fxm" class="sub" role="status"></p><div id="fxp"></div>`:`<p class="sub">Yakıt girmek için önce araç ekle.</p><button onclick="vehiclesView('v')">Araç ekle</button>`}</div>
   <div class="card"><h2>Takip sisteminden km ekle</h2><p class="sub">Takip sisteminde Günlük Aktivite raporunu aç (her gün ayrı km verir), tabloyu seçip kopyala ve buraya yapıştır. Rota raporu da olur; satırda tarih yoksa aşağıdaki aralığa yazılır. Bu km'ler bizim hesapladığımız km'lerden ayrı tutulur, Panel'de yan yana karşılaştırılır.</p><div class="f2"><div><label>Kaynak</label><select id="ks"><option>Turuncu</option><option>Arvento</option><option>Diğer</option></select></div><div></div><div><label>Başlangıç</label><input id="kf" type="date" value="${today(new Date(Date.now()-864e5))}"></div><div><label>Bitiş</label><input id="kt" type="date" value="${today(new Date(Date.now()-864e5))}"></div></div><textarea id="kx" rows="4" style="width:100%;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;margin-top:8px" aria-label="Takip raporu metni" placeholder="48 BF 345  ŞABAN YALÇINKAYA  31.5  44 dk"></textarea><div class="row"><button onclick="readKm()">Raporu oku</button></div><p id="kmsg" class="sub" role="status"></p><div id="kp"></div></div>
   <div class="card"><h2>Gider ekle</h2><div class="f2"><div><label>Tür</label><select id="xc">${ECAT.map(c=>`<option>${c}</option>`).join("")}</select></div><div><label>Araç</label><select id="xv"><option value="">Genel (araca bağlı değil)</option>${vo}</select></div><div><label>Tutar (₺)</label><input id="xa" inputmode="decimal"></div><div><label>Ne sıklıkta</label><select id="xp"><option value="aylik">Her ay</option><option value="gunluk">Her gün</option><option value="tek_sefer">Tek sefer</option></select></div><div><label>Başlangıç tarihi</label><input id="xd" type="date" value="${today()}"></div><div><label>Açıklama</label><input id="xn"></div></div><div class="row"><button onclick="addExp()">Gideri kaydet</button></div><p id="xmsg" class="sub" role="status"></p></div>
   <div class="card"><h2>Kayıtlı giderler</h2>${E.map(x=>`<div class="veh"><div><b>${esc(x.category)}</b> <span class="k">${esc(pv[x.vehicle_id]||"Genel")}${x.description?" · "+esc(x.description):""}</span><br>${fm(x.amount)} <span class="k">${EPER[x.period]||""}, ${dm(x.start_date)} tarihinden</span></div><button class="x" onclick="delExp('${x.id}')">Gideri sil</button></div>`).join("")||`<p class="sub">Henüz gider yok. Araçların sabit aylık giderini Araçlar sekmesinden, personel ve diğerlerini buradan girebilirsin.</p>`}</div>
@@ -235,6 +235,29 @@ async function saveKm(){
   const src=($("#ks")&&$("#ks").value)||"Turuncu",rows=KM.filter(r=>r.vid).map(r=>({company_id:co.id,vehicle_id:r.vid,date_from:r.from,date_to:r.to,km:Math.round(r.km*10)/10,moving_min:r.min,first_on:r.on,last_off:r.off,source:src}));
   const q=await sb.from("vehicle_km").upsert(rows,{onConflict:"company_id,vehicle_id,date_from,date_to"});if(q.error){alert(errText(q.error));return}
   KM=[];await vehiclesView("t");
+}
+let FX=[];
+function parseFuelRows(rows){
+  const hi=rows.findIndex(r=>r.some(c=>/^plaka$/i.test(String(c||"").trim()))&&r.some(c=>/miktar|litre|\(lt\)/i.test(String(c||"")))&&r.some(c=>/tutar/i.test(String(c||""))));if(hi<0)return null;
+  const H=rows[hi].map(c=>String(c||"")),ix=re=>H.findIndex(c=>re.test(c));
+  const I={pl:ix(/^plaka$/i),km:ix(/kilometre|^km$/i),lt:ix(/miktar|litre|\(lt\)/i),tl:ix(/tutar/i),dt:ix(/tarih/i),pr:ix(/ürün|urun/i),up:ix(/birim fiyat/i),cd:ix(/kart/i)};
+  return rows.slice(hi+1).map(r=>{const pl=String(r[I.pl]||"").trim(),m=pl.replace(/\s+/g,"").toLocaleUpperCase("tr").match(/^(\d{2})([A-ZÇĞİÖŞÜ]{1,3})(\d{2,5})$/),d=xlDate(r[I.dt]),lt=xlNum(r[I.lt]),tl=xlNum(r[I.tl]),km=I.km>=0?xlNum(r[I.km]):null;
+    if(!m||!d||!lt)return null;return{plate:m[1]+" "+m[2]+" "+m[3],d:d.d,t:d.t,lt,tl,km:km&&km>0?Math.round(km):null,pr:I.pr>=0?String(r[I.pr]||""):"",up:I.up>=0?xlNum(r[I.up]):null,ref:(I.cd>=0&&r[I.cd]?String(r[I.cd]):m[0])+"|"+d.d+" "+d.t+"|"+lt}}).filter(Boolean);
+}
+async function readFuelX(inp){
+  const f=inp.files[0],e=$("#fxm");if(!f)return;e.textContent="Okunuyor…";e.className="sub ok";
+  let rows;try{rows=parseFuelRows(await readXlsx(await f.arrayBuffer()))}catch(x){e.textContent="Dosya okunamadı: "+x.message;e.className="sub bad";inp.value="";return}inp.value="";
+  if(!rows||!rows.length){e.textContent="Bu dosyada plaka, litre ve tutar sütunları bulunamadı.";e.className="sub bad";return}
+  const pk=s=>s.replace(/\s+/g,"");FX=rows.map(r=>Object.assign(r,{vid:(VEH.find(v=>pk(v.plate)==pk(r.plate))||{}).id||""}));
+  const by={};FX.forEach(r=>{const b=by[r.plate]||(by[r.plate]={n:0,lt:0,tl:0,v:r.vid,a:r.d,z:r.d});b.n++;b.lt+=r.lt;b.tl+=r.tl||0;if(r.d<b.a)b.a=r.d;if(r.d>b.z)b.z=r.d});
+  const ok=FX.filter(r=>r.vid).length,dm=d=>d.slice(8)+"."+d.slice(5,7)+"."+d.slice(0,4);
+  e.textContent=`${FX.length} alım okundu, ${ok} tanesi araçlarınla eşleşti.`;
+  $("#fxp").innerHTML=Object.keys(by).map(k=>{const b=by[k];return `<div class="pl"><b>${esc(k)}</b> <span class="k">${dm(b.a)}–${dm(b.z)}</span> · ${b.n} alım · ${b.lt.toLocaleString("tr-TR",{maximumFractionDigits:1})} L · ${fm(b.tl)} · ort. ${(b.tl/b.lt).toFixed(2)} ₺/L${b.v?"":' <span class="warn">uygulamada bu plaka yok, atlanacak</span>'}</div>`}).join("")+(ok?`<div class="row"><button onclick="saveFuelX()">${ok} alımı kaydet</button></div>`:"");
+}
+async function saveFuelX(){
+  const rows=FX.filter(r=>r.vid).map(r=>({company_id:co.id,vehicle_id:r.vid,log_date:r.d,liters:r.lt,amount:r.tl,odometer_km:r.km,ext_ref:r.ref,product:r.pr||null,unit_price:r.up}));
+  const q=await sb.from("fuel_logs").upsert(rows,{onConflict:"company_id,ext_ref",ignoreDuplicates:true}).select("id");if(q.error){alert(errText(q.error));return}
+  const n=(q.data||[]).length;FX=[];await vehiclesView("t");const e=$("#fxm");if(e){e.textContent=`${n} yeni alım kaydedildi${rows.length-n?", "+(rows.length-n)+" alım zaten kayıtlıydı":""}.`;e.className="sub ok"}
 }
 async function addFuel(){
   const l=num($("#fl").value),a=num($("#fa").value),o=num($("#fo").value);
@@ -291,12 +314,12 @@ async function delTrip(id){
   if(r.error){alert("Silinemedi: "+r.error.message);return}await vehiclesView("t");
 }
 async function vehTab(){
-  const list=VEH.map(v=>`<div class="veh"><div><b>${esc(v.plate)}</b><br><span class="k">${ROLE=="owner"?"Sabit gider "+Number(v.monthly_fixed_cost).toLocaleString("tr-TR")+" ₺/ay":""}${v.base_consumption?" · "+v.base_consumption+" L/100 km":""}${v.home_city?" · "+esc(v.home_city):""}${v.odometer_km?" · "+Number(v.odometer_km).toLocaleString("tr-TR")+" km":""}</span><br><select class="sm" onchange="setDefDrv('${v.id}',this.value)"><option value="">Sabit şoför yok</option>${DRV.map(d=>`<option value="${d.id}" ${d.id==v.default_driver_id?"selected":""}>${esc(d.name)}</option>`).join("")}</select> <input class="sm" style="width:110px" inputmode="numeric" placeholder="kapasite" aria-label="${esc(v.plate)} yolcu kapasitesi" value="${v.capacity||""}" data-id="${esc(v.id)}" onchange="setCap(this.dataset.id,this.value)"> <select class="sm" aria-label="${esc(v.plate)} araç sınıfı" data-id="${esc(v.id)}" onchange="setCls(this.dataset.id,this.value)"><option value="">Sınıf seç</option>${Object.keys(VCL).map(k=>`<option value="${k}" ${k==v.vehicle_class?"selected":""}>${VCL[k]}</option>`).join("")}</select></div><button class="x" data-id="${esc(v.id)}" data-plate="${esc(v.plate)}" onclick="delVeh(this.dataset.id,this.dataset.plate)">Sil</button></div>`).join("")||`<p class="sub">Henüz araç yok. Aşağıdan ilk aracını ekle.</p>`;
+  const list=VEH.map(v=>`<div class="veh"><div><b>${esc(v.plate)}</b><br><span class="k">${ROLE=="owner"?"Sabit gider "+Number(v.monthly_fixed_cost).toLocaleString("tr-TR")+" ₺/ay":""}${v.base_consumption?" · "+v.base_consumption+" L/100 km":""}${v.home_city?" · "+esc(v.home_city):""}${v.odometer_km?" · "+Number(v.odometer_km).toLocaleString("tr-TR")+" km":""}</span><br><select class="sm" onchange="setDefDrv('${v.id}',this.value)"><option value="">Sabit şoför yok</option>${DRV.map(d=>`<option value="${d.id}" ${d.id==v.default_driver_id?"selected":""}>${esc(d.name)}</option>`).join("")}</select> <input class="sm" style="width:110px" inputmode="numeric" placeholder="kapasite" aria-label="${esc(v.plate)} yolcu kapasitesi" value="${v.capacity||""}" data-id="${esc(v.id)}" onchange="setCap(this.dataset.id,this.value)"></div><button class="x" data-id="${esc(v.id)}" data-plate="${esc(v.plate)}" onclick="delVeh(this.dataset.id,this.dataset.plate)">Sil</button></div>`).join("")||`<p class="sub">Henüz araç yok. Aşağıdan ilk aracını ekle.</p>`;
   $("#tab").innerHTML=`<div class="card"><h2>Araçlar</h2>${list}</div>
   <div class="card"><h2>Araç ekle</h2>
   <label>Plaka</label><input id="pl" placeholder="48 ABC 123" autocapitalize="characters">
   <div class="f2"><div><label>Aylık sabit gider (₺)</label><input id="fx" inputmode="decimal" placeholder="sigorta, kredi, bakım payı"></div><div><label>Ort. tüketim (L/100 km)</label><input id="bc" inputmode="decimal"></div>
-  <div><label>Bulunduğu şehir</label><input id="hc" placeholder="Bodrum"></div><div><label>Yolcu kapasitesi</label><input id="cp" inputmode="numeric" placeholder="16"></div><div><label>Araç sınıfı</label><select id="vc"><option value="">Seçilmedi</option>${Object.keys(VCL).map(k=>`<option value="${k}">${VCL[k]}</option>`).join("")}</select></div><div><label>Km saati</label><input id="od" inputmode="numeric"></div></div>
+  <div><label>Bulunduğu şehir</label><input id="hc" placeholder="Bodrum"></div><div><label>Yolcu kapasitesi</label><input id="cp" inputmode="numeric" placeholder="16"></div><div><label>Km saati</label><input id="od" inputmode="numeric"></div></div>
   <div class="row"><button onclick="addVeh()">Aracı kaydet</button></div><p id="msg" class="sub" role="status"></p></div><div id="docs"></div><div id="team"></div>`;
   docsView();if(ROLE=="owner")teamView();
 }
@@ -430,6 +453,24 @@ function parseForm(pages){
   const place=j.jtype=="varis"?(v["Bırakma Yeri"]||to):(v["Buluşma Yeri"]||from);j.stops=place?[{place,pax:+j.pax||0,names:j.guest?[j.guest]:[]}]:[];
   return j;
 }
+async function readXlsx(buf){
+  const u=new Uint8Array(buf),dv=new DataView(u.buffer,u.byteOffset,u.byteLength),dec=new TextDecoder();
+  let e=u.length-22;while(e>=0&&dv.getUint32(e,true)!==0x06054b50)e--;if(e<0)throw new Error("Excel dosyası okunamadı");
+  const n=dv.getUint16(e+10,true),F={};let p=dv.getUint32(e+16,true);
+  for(let i=0;i<n;i++){const m=dv.getUint16(p+10,true),cs=dv.getUint32(p+20,true),nl=dv.getUint16(p+28,true),xl=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true),lo=dv.getUint32(p+42,true),name=dec.decode(u.subarray(p+46,p+46+nl));F[name]={m,cs,lo};p+=46+nl+xl+cl}
+  const get=async name=>{const f=F[name];if(!f)return null;const s=f.lo+30+dv.getUint16(f.lo+26,true)+dv.getUint16(f.lo+28,true),d=u.slice(s,s+f.cs);
+    if(f.m==0)return dec.decode(d);return await new Response(new Blob([d]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text()};
+  const X=s=>new DOMParser().parseFromString(s,"application/xml"),T=(el,t)=>[...el.getElementsByTagNameNS("*",t)];
+  const ss=await get("xl/sharedStrings.xml"),SS=ss?T(X(ss),"si").map(si=>T(si,"t").map(t=>t.textContent).join("")):[];
+  const sh=Object.keys(F).filter(k=>/^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort((a,b)=>parseInt(a.match(/\d+/))-parseInt(b.match(/\d+/)))[0];if(!sh)throw new Error("Excel'de sayfa bulunamadı");
+  const rows=[];T(X(await get(sh)),"row").forEach(r=>{const row=[];T(r,"c").forEach(c=>{const ref=c.getAttribute("r")||"",col=(ref.match(/^[A-Z]+/)||["A"])[0].split("").reduce((s,ch)=>s*26+ch.charCodeAt(0)-64,0)-1,t=c.getAttribute("t"),v=T(c,"v")[0];
+    let val=null;if(t=="s")val=v?SS[+v.textContent]:null;else if(t=="inlineStr")val=T(c,"t").map(x=>x.textContent).join("");else if(t=="str"||t=="e")val=v?v.textContent:null;else if(t=="b")val=v?v.textContent=="1":null;else val=v?Number(v.textContent):null;row[col]=val});
+    rows[(+r.getAttribute("r")||rows.length+1)-1]=row});
+  return Array.from(rows,r=>Array.from(r||[],c=>c===undefined?null:c));
+}
+const xlDate=v=>{if(v==null||v==="")return null;if(typeof v=="number"&&v>20000){const d=new Date(Math.round((v-25569)*864e5));return{d:d.toISOString().slice(0,10),t:d.toISOString().slice(11,16)}}
+  const m=String(v).match(/(\d{1,2})[./](\d{1,2})[./](\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);return m?{d:m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0"),t:m[4]?m[4].padStart(2,"0")+":"+m[5]:""}:null};
+const xlNum=v=>typeof v=="number"?v:num(v);
 async function readLists(inp){
   const files=[...inp.files];if(!files.length)return;
   im("Listeler okunuyor…");IMP=[];MISS=[];IMPW=[];const warn=IMPW;
@@ -653,11 +694,12 @@ async function planTab(){
     `<div class="card"><h2>UETDS hazırlığı</h2><p class="sub">Bu günün işlerini UETDS alan adlarıyla tek tablo olarak indirir (Excel'de açılır). Bildirim, sefer başlamadan en geç 1 saat önce yapılmalı. Uyruk ve pasaport numarası acenta listelerinde olmadığı için boş gelir.</p><div class="row"><button onclick="uetdsDay()">Günün UETDS tablosunu indir</button></div><div id="uw"></div></div>`+
     `<p class="sub">Km'ler bölge merkezleri arasındaki yaklaşık yol mesafesidir; boş sürüş, aracın önceki işi bıraktığı bölgeden sonraki işin alış bölgesine gidişidir (aracın bulunduğu şehir girilmişse güne oradan başlar). Bitiş saatleri tahmindir (Bölge süreleri, İşler sekmesinin altında). Çakışma, bir aracın ya da şoförün önceki işi bitmeden yeni işe başlaması demektir.</p>`;
 }
-const GEO={BODRUM:[37.035,27.43],GUMBET:[37.033,27.405],BARDAKCI:[37.032,27.415],BITEZ:[37.035,27.38],ORTAKENT:[37.04,27.35],YAHSI:[37.027,27.345],TURGUTREIS:[37.003,27.258],AKYARLAR:[36.973,27.3],GUMUSLUK:[37.054,27.234],KADIKALESI:[37.022,27.25],YALIKAVAK:[37.105,27.293],GUNDOGAN:[37.13,27.36],TURKBUKU:[37.122,27.375],GOLTURKBUKU:[37.122,27.375],TORBA:[37.085,27.45],KONACIK:[37.05,27.42],YALICIFTLIK:[37.012,27.476],GUVERCINLIK:[37.25,27.58],MILAS:[37.315,27.783],AKBUK:[37.398,27.433],DIDIM:[37.375,27.268],ALTINKUM:[37.35,27.26],MARMARIS:[36.855,28.272],ICMELER:[36.805,28.232],DALAMAN:[36.765,28.8],SARIGERME:[36.712,28.705],DALYAN:[36.835,28.643],GOCEK:[36.753,28.94],FETHIYE:[36.622,29.116],OLUDENIZ:[36.55,29.115],HISARONU:[36.573,29.14],BJV:[37.2506,27.6643],DLM:[36.7131,28.7925]};
+const GEO={BODRUM:[37.035,27.43],GUMBET:[37.033,27.405],BARDAKCI:[37.032,27.415],BITEZ:[37.035,27.38],ORTAKENT:[37.04,27.35],YAHSI:[37.027,27.345],TURGUTREIS:[37.003,27.258],AKYARLAR:[36.973,27.3],GUMUSLUK:[37.054,27.234],KADIKALESI:[37.022,27.25],YALIKAVAK:[37.105,27.293],GUNDOGAN:[37.13,27.36],TURKBUKU:[37.122,27.375],GOLTURKBUKU:[37.122,27.375],TORBA:[37.085,27.45],KONACIK:[37.05,27.42],YALICIFTLIK:[37.012,27.476],GUVERCINLIK:[37.25,27.58],MILAS:[37.315,27.783],AKBUK:[37.398,27.433],DIDIM:[37.375,27.268],ALTINKUM:[37.35,27.26],MARMARIS:[36.855,28.272],ICMELER:[36.805,28.232],DALAMAN:[36.765,28.8],SARIGERME:[36.712,28.705],DALYAN:[36.835,28.643],GOCEK:[36.753,28.94],FETHIYE:[36.622,29.116],OLUDENIZ:[36.55,29.115],HISARONU:[36.573,29.14],BJV:[37.2506,27.6643],DLM:[36.7131,28.7925],KAPLANKAYA:[37.385,27.43],KUSADASI:[37.858,27.261],ADB:[38.292,27.157]};
 const gnorm=s=>String(s||"").toLocaleUpperCase("tr").replace(/[ÇĞİÖŞÜ]/g,c=>({Ç:"C",Ğ:"G",İ:"I",Ö:"O",Ş:"S",Ü:"U"})[c]).replace(/[^A-Z]+/g," ").trim();
 function locOf(name){
   const n=" "+gnorm(name)+" ";if(n.trim()=="")return null;
   if(/ (DLM|DALAMAN (AIRPORT|HAVALIMANI|HAVAALANI)) /.test(n))return{k:"DLM",c:GEO.DLM};
+  if(/ (ADB|IZMIR (AIRPORT|HAVALIMANI|HAVAALANI)|ADNAN MENDERES) /.test(n))return{k:"ADB",c:GEO.ADB};
   if(/ (BJV|AIRPORT|HAVALIMANI|HAVAALANI|MILAS BODRUM) /.test(n))return{k:"BJV",c:GEO.BJV};
   const k=Object.keys(GEO).filter(k=>n.includes(" "+k+" ")).sort((a,b)=>b.length-a.length)[0];return k?{k,c:GEO[k]}:null;
 }
@@ -819,41 +861,86 @@ async function delMember(uid,email){
   const r=await sb.from("company_members").delete().eq("company_id",co.id).eq("user_id",uid);if(r.error){alert(errText(r.error));return}await vehiclesView("v");
 }
 const VCL={binek:"Binek / Vito",minibus:"Minibüs",midibus:"Midibüs",otobus:"Otobüs"};
-let PR=[];
-async function setCls(vid,val){const r=await sb.from("vehicles").update({vehicle_class:val||null}).eq("id",vid);if(r.error){alert(errText(r.error));return}await vehiclesView("v")}
+let PI=[],PX=null;
+const ZN={YARIMADA:["BODRUM","GUMBET","BARDAKCI","BITEZ","ORTAKENT","YAHSI","TURGUTREIS","AKYARLAR","GUMUSLUK","KADIKALESI","YALIKAVAK","GUNDOGAN","TURKBUKU","GOLTURKBUKU","TORBA","KONACIK","YALICIFTLIK","GUVERCINLIK"],BJV:["BJV"],KAPLANKAYA:["KAPLANKAYA"],DALAMAN:["DALAMAN","DLM","SARIGERME","DALYAN","GOCEK"],MARMARIS:["MARMARIS","ICMELER"],IZMIR:["ADB"],DIDIM:["DIDIM","ALTINKUM","AKBUK"],KUSADASI:["KUSADASI"],MILAS:["MILAS"],FETHIYE:["FETHIYE","OLUDENIZ","HISARONU"]};
+const ZL={YARIMADA:"Bodrum Yarımada",BJV:"BJV Havalimanı",KAPLANKAYA:"Kaplankaya",DALAMAN:"Dalaman",MARMARIS:"Marmaris",IZMIR:"İzmir / ADB",DIDIM:"Didim",KUSADASI:"Kuşadası",MILAS:"Milas",FETHIYE:"Fethiye"};
+const zKey=k=>Object.keys(ZN).find(z=>ZN[z].includes(k))||k;
+function zoneFromText(t){const n=" "+gnorm(t)+" ";if(!n.trim())return "";
+  if(/ YARIMADA /.test(n))return "YARIMADA";if(/ (ADB|IZMIR) /.test(n))return "IZMIR";if(/ (DLM|DALAMAN) /.test(n))return "DALAMAN";if(/ BJV /.test(n)||/ (AIRPORT|HAVALIMANI|HAVAALANI) /.test(n)&&/ (BODRUM|MILAS) /.test(n))return "BJV";
+  const z=Object.keys(ZN).find(k=>n.includes(" "+k+" "));if(z)return z;const l=locOf(t);return l?zKey(l.k):gnorm(t);}
+const zl=z=>ZL[z]||z;
+const TIERS=[4,8,15,19,29,35,46,55];
+function jobZones(j){
+  const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq).map(s=>s.region||s.place),names=(st.length?st:[]).concat([j.from_city,j.to_city]).filter(Boolean),miss=[],Z=new Set();
+  names.forEach(x=>{const l=locOf(x);if(l)Z.add(zKey(l.k));else{const z=zoneFromText(x);if(ZN[z])Z.add(z);else miss.push(gnorm(x))}});
+  return{Z:[...Z],miss};
+}
+function priceFor(j){
+  const it=PI.filter(x=>x.agency_id==j.agency_id&&(!x.valid_from||x.valid_from<=j.job_date)&&(!x.valid_to||x.valid_to>=j.job_date));if(!it.length)return{miss:"acentanın bu tarih için fiyat listesi yok"};
+  const {Z,miss}=jobZones(j);if(miss.length)return{miss:"bölgesi tanınmayan yer: "+[...new Set(miss)].join(", ")};
+  const air=Z.includes("BJV"),other=Z.filter(z=>z!="BJV"),svc=air?"transfer":"ara_transfer",pairs=air?other.map(z=>["BJV",z]):other.length==1?[[other[0],other[0]]]:other.length?[[other[0],other[other.length-1]]]:[];
+  if(!pairs.length)return{miss:"güzergah anlaşılamadı"};
+  const st=j.job_stops||[],v=VEH.find(x=>x.id==j.vehicle_id),pax=Number(j.pax)||st.reduce((s,x)=>s+(x.pax||0),0)||(v&&v.capacity)||0;
+  let best=null,why="";
+  for(const [a,b] of pairs){const rs=it.filter(x=>x.service==svc&&((x.zone_a==a&&x.zone_b==b)||(x.zone_a==b&&x.zone_b==a)));if(!rs.length){why=`${svc=="transfer"?"Transfer":"Ara Transfer"} ${zl(a)} ↔ ${zl(b)} için fiyat yok`;continue}
+    const veh=rs.filter(x=>x.tier>0&&Number(x.amount)>0).sort((p,q)=>p.tier-q.tier),pp=rs.find(x=>x.tier==0&&Number(x.amount)>0);let r=null;
+    if(veh.length){if(!pax){why="kişi sayısı yok";continue}const t=veh.find(x=>x.tier>=pax);if(!t){why=`${pax} kişi, listedeki en büyük araçtan (${veh[veh.length-1].tier}) fazla`;continue}r={amount:Number(t.amount),currency:t.currency,tier:t.tier}}
+    else if(pp){if(!pax){why="kişi sayısı yok";continue}r={amount:Number(pp.amount)*pax,currency:pp.currency,tier:0}}
+    if(r&&(!best||(r.currency==best.currency&&r.amount>best.amount)))best=r}
+  return best||{miss:why||"fiyat bulunamadı"};
+}
 async function priceView(){
-  const r=await sb.from("price_rules").select("*").eq("company_id",co.id).order("region"),e=$("#pr");if(!e||r.error)return;PR=r.data||[];
-  const regs=[...new Set(Object.keys(RD0).concat(PR.map(x=>x.region)))].sort();
-  e.innerHTML=`<div class="card"><h2>Fiyat tablosu</h2><p class="sub">Acentayla anlaştığın fiyatları bir kez gir; fiyatsız işlere buradan toplu yazılır. Araç başı fiyat aracın sınıfına göre, kişi başı fiyat her otelin kişi sayısına göre hesaplanır. Bir iş birden çok bölgeye uğruyorsa araç başında en yüksek bölge fiyatı alınır.</p>${AGN.filter(a=>PR.some(x=>x.agency_id==a.id)).map(a=>`<h2 style="margin:12px 0 0">${esc(a.name)}</h2>`+PR.filter(x=>x.agency_id==a.id).map(x=>`<div class="veh"><div>${esc(x.region)} <span class="k">${x.basis=="arac"?VCL[x.vehicle_class]+", araç başı":"kişi başı, tek yön"}</span><br><b>${fc(x.amount,x.currency)}</b></div><button class="x" onclick="delRule('${x.id}')">Kuralı sil</button></div>`).join("")).join("")||'<p class="sub">Henüz fiyat kuralı yok.</p>'}
-  <h2 style="margin:16px 0 0">Kural ekle</h2><div class="f2"><div><label>Acenta</label><input id="ra" list="ral" autocomplete="off"><datalist id="ral">${AGN.map(a=>`<option value="${esc(a.name)}">`).join("")}</datalist></div><div><label>Bölge</label><input id="rr" list="rrl" autocapitalize="characters" autocomplete="off"><datalist id="rrl">${regs.map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
-  <div><label>Hesap şekli</label><select id="rb"><option value="arac">Araç başı</option><option value="kisi">Kişi başı, tek yön</option></select></div><div><label>Araç sınıfı (araç başı için)</label><select id="rc">${Object.keys(VCL).map(k=>`<option value="${k}">${VCL[k]}</option>`).join("")}</select></div>
-  <div><label>Tutar</label><input id="rm" inputmode="decimal"></div><div><label>Para birimi</label><select id="ru"><option>TRY</option><option>EUR</option><option>USD</option><option>GBP</option></select></div></div>
-  <div class="row"><button onclick="addRule()">Kuralı kaydet</button><button class="alt" onclick="applyPrices()">Fiyatsız işlere uygula</button></div><p id="pmsg" class="sub" role="status"></p><div id="pres"></div></div>`;
+  const r=await sb.from("price_items").select("*").eq("company_id",co.id),e=$("#pr");if(!e||r.error)return;PI=r.data||[];
+  const dm=d=>d?d.slice(8)+"."+d.slice(5,7)+"."+d.slice(0,4):"",an={};AGN.forEach(a=>an[a.id]=a.name);
+  const grp=AGN.filter(a=>PI.some(x=>x.agency_id==a.id)).map(a=>{const its=PI.filter(x=>x.agency_id==a.id),keys=[...new Set(its.map(x=>x.service+"|"+x.zone_a+"|"+x.zone_b+"|"+(x.valid_from||"")))],vf=its.find(x=>x.valid_from);
+    return `<h2 style="margin:12px 0 0">${esc(a.name)}</h2>${vf?`<p class="sub" style="margin:0">Sezon ${dm(vf.valid_from)}–${dm(vf.valid_to)}</p>`:""}${keys.map(k=>{const [s,za,zb]=k.split("|"),rs=its.filter(x=>x.service+"|"+x.zone_a+"|"+x.zone_b+"|"+(x.valid_from||"")==k).sort((p,q)=>(p.tier||999)-(q.tier||999));
+      return `<div class="pl"><b>${s=="transfer"?"Transfer":"Ara Transfer"}</b> · ${esc(zl(za))} ↔ ${esc(zl(zb))}<br>${rs.map(x=>`<span style="white-space:nowrap">${x.tier?x.tier+" kişilik":"kişi başı"} <b>${fc(x.amount,x.currency)}</b> <button class="x" style="min-height:0;padding:2px 6px" aria-label="Fiyatı sil" onclick="delItem('${x.id}')">×</button></span>`).join(" · ")}</div>`}).join("")}<div class="row"><button class="x" data-a="${esc(a.id)}" data-n="${esc(a.name)}" onclick="delAgencyPrices(this.dataset.a,this.dataset.n)">${esc(a.name)} fiyatlarını sil</button></div>`}).join("");
+  const zo=Object.keys(ZL).map(z=>`<option value="${esc(ZL[z])}">`).join("");
+  e.innerHTML=`<div class="card"><h2>Fiyat listeleri</h2><p class="sub">Acentanın fiyat listesini Excel olarak yükle ya da elle gir. Fiyat, işin kişi sayısına uyan en küçük araç kolonundan alınır (10 kişi → 15'lik). Turgutreis, Gümbet, Yalıkavak gibi yerler Bodrum Yarımada sayılır. Havalimanı varsa Transfer, yoksa Ara Transfer fiyatı kullanılır.</p>${grp||'<p class="sub">Henüz fiyat listesi yok.</p>'}
+  <h2 style="margin:16px 0 0">Excel'den yükle</h2><div class="f2"><div><label>Acenta</label><input id="xa" list="ral" autocomplete="off"></div><div><label>Dosya</label><input type="file" id="xf" accept=".xlsx" aria-label="Fiyat listesi Excel" onchange="readPriceX(this)"></div></div><datalist id="ral">${AGN.map(a=>`<option value="${esc(a.name)}">`).join("")}</datalist><p id="xm" class="sub" role="status"></p><div id="xp"></div>
+  <details><summary>Elle fiyat ekle</summary><div class="f2"><div><label>Acenta</label><input id="ia2" list="ral" autocomplete="off"></div><div><label>Hizmet</label><select id="is2"><option value="transfer">Transfer (havalimanı)</option><option value="ara_transfer">Ara Transfer</option></select></div><div><label>Bölge 1</label><input id="iz1" list="zl" value="BJV Havalimanı"></div><div><label>Bölge 2</label><input id="iz2" list="zl" value="Bodrum Yarımada"></div><div><label>Araç kapasitesi</label><select id="it2">${TIERS.map(t=>`<option value="${t}">${t} kişilik</option>`).join("")}<option value="0">Kişi başı</option></select></div><div><label>Tutar</label><input id="im2" inputmode="decimal"></div><div><label>Para birimi</label><select id="iu2"><option>TRY</option><option>EUR</option><option>USD</option><option>GBP</option></select></div></div><datalist id="zl">${zo}</datalist><div class="row"><button onclick="addItem()">Fiyatı kaydet</button></div></details>
+  <div class="row"><button class="alt" onclick="applyPrices()">Fiyatsız işlere uygula</button></div><p id="pmsg" class="sub" role="status"></p><div id="pres"></div></div>`;
 }
 const pm=(t,bad)=>{const e=$("#pmsg");if(e){e.textContent=t;e.className="sub "+(bad?"bad":"ok")}};
-async function addRule(){
-  const name=$("#ra").value.trim(),region=rk($("#rr").value),basis=$("#rb").value,a=num($("#rm").value);
-  if(!name||!region){pm("Acenta ve bölgeyi yaz.",true);return}if(a==null||a<=0){pm("Tutarı yaz.",true);return}
-  let aid;try{aid=await agId(name)}catch(e){pm(e.message,true);return}
-  const r=await sb.from("price_rules").insert({company_id:co.id,agency_id:aid,region,basis,vehicle_class:basis=="arac"?$("#rc").value:null,amount:a,currency:$("#ru").value});
-  if(r.error){pm(r.error.code==="23505"?"Bu acenta, bölge ve hesap şekli için kural zaten var. Değiştirmek için önce eskisini sil.":"Kaydedilemedi: "+errText(r.error),true);return}
-  await vehiclesView("c");
+function parsePriceRows(rows){
+  const cell=re=>{for(const r of rows)for(let i=0;i<r.length;i++)if(re.test(String(r[i]||"").trim()))for(let k=i+1;k<r.length;k++)if(r[k]!=null&&r[k]!=="")return r[k];return null};
+  const curRaw=String(cell(/^kur:?$/i)||"TRY").toUpperCase(),cur=/EUR|€/.test(curRaw)?"EUR":/USD|\$/.test(curRaw)?"USD":/GBP|£/.test(curRaw)?"GBP":"TRY",vf=xlDate(cell(/sezon ba[şs]lang[ıi][çc]/i)),vt=xlDate(cell(/sezon biti[şs]/i));
+  const hi=rows.findIndex(r=>r.some(c=>/^servis$/i.test(String(c||"").trim()))&&r.some(c=>/ba[şs]lang[ıi][çc]/i.test(String(c||""))));if(hi<0)return null;
+  const H=rows[hi],tiers=H.map((c,i)=>{const s=String(c||"");if(i<3||!s)return null;const m=s.match(/\((\d+)\)/);return m?+m[1]:/sic|ki[şs]i|regular|pax/i.test(s)?0:null});
+  const out=[],skip=new Set();
+  for(const r of rows.slice(hi+1)){const sv=String(r[0]||"").trim();if(/^fiyatlara/i.test(sv))break;const svc=/^ara/i.test(sv)?"ara_transfer":/transfer/i.test(sv)?"transfer":null;
+    if(!svc){if(sv&&r.slice(3).some(v=>v!=null&&v!==""))skip.add(sv);continue}const fa=String(r[1]||"").trim(),fb=String(r[2]||"").trim();if(!fa||!fb)continue;
+    const zs=s=>[...new Set(s.split(/[,/;]| ve /i).map(x=>x.trim()).filter(Boolean).map(zoneFromText))];
+    for(const za of zs(fa))for(const zb of zs(fb))tiers.forEach((t,i)=>{if(t==null)return;const v=r[i];if(v==null||v==="")return;let a=xlNum(v),c=cur;const s=String(v);if(/\$/.test(s))c="USD";else if(/€/.test(s))c="EUR";else if(/£/.test(s))c="GBP";if(a==null||a<=0)return;out.push({service:svc,zone_a:za,zone_b:zb,ra:fa,rb:fb,tier:t,amount:a,currency:c})})}
+  return{items:out,cur,vf:vf&&vf.d,vt:vt&&vt.d,skip:[...skip]};
 }
-async function delRule(id){if(!confirm("Bu fiyat kuralı silinsin mi? Daha önce yazılmış fiyatlar değişmez."))return;const r=await sb.from("price_rules").delete().eq("id",id);if(r.error){alert(errText(r.error));return}await vehiclesView("c")}
-function priceFor(j){
-  const rs=PR.filter(x=>x.agency_id==j.agency_id);if(!rs.length)return{miss:"acentanın fiyat kuralı yok"};
-  const st=j.job_stops||[],regs=st.length?st.map(s=>({r:rk(s.region),pax:s.pax||0})):[{r:rk(j.job_type=="varis"?j.to_city:j.from_city),pax:j.pax||0}];
-  const v=VEH.find(x=>x.id==j.vehicle_id),cls=v&&v.vehicle_class;
-  const ar=regs.map(g=>rs.find(x=>x.basis=="arac"&&x.region==g.r&&x.vehicle_class==cls));
-  if(cls&&ar.every(Boolean)){const m=ar.reduce((a,b)=>Number(b.amount)>Number(a.amount)?b:a);return{amount:Number(m.amount),currency:m.currency}}
-  const kr=regs.map(g=>rs.find(x=>x.basis=="kisi"&&x.region==g.r));
-  if(kr.every(Boolean)){const cur=kr[0].currency;if(kr.some(x=>x.currency!=cur))return{miss:"kişi başı kurallar farklı para biriminde"};const t=regs.reduce((s,g,i)=>s+g.pax*Number(kr[i].amount),0);return t>0?{amount:t,currency:cur}:{miss:"kişi sayısı yok"}}
-  if(regs.some(g=>rs.some(x=>x.basis=="arac"&&x.region==g.r))&&!ar.every(Boolean))return{miss:!v?"araç atanmamış":!cls?v.plate+" aracının sınıfı seçilmemiş":"bu araç sınıfı için bölge kuralı eksik"};
-  return{miss:"bölge için kural yok: "+[...new Set(regs.filter((g,i)=>!kr[i]).map(g=>g.r||"?"))].join(", ")};
+async function readPriceX(inp){
+  const f=inp.files[0],e=$("#xm");if(!f)return;e.textContent="Okunuyor…";e.className="sub ok";
+  try{PX=parsePriceRows(await readXlsx(await f.arrayBuffer()))}catch(x){e.textContent="Dosya okunamadı: "+x.message;e.className="sub bad";inp.value="";return}inp.value="";
+  if(!PX||!PX.items.length){e.textContent="Bu dosyada Servis / Başlangıç / Bitiş başlıklı fiyat tablosu bulunamadı.";e.className="sub bad";PX=null;return}
+  const unk=[...new Set(PX.items.flatMap(x=>[x.zone_a,x.zone_b]).filter(z=>!ZN[z]))],routes=[...new Set(PX.items.map(x=>x.service+"|"+x.zone_a+"|"+x.zone_b))];
+  e.textContent=`${PX.items.length} fiyat okundu (${routes.length} güzergah).`;
+  $("#xp").innerHTML=`<div class="pl">Para birimi ${PX.cur}${PX.vf?` · sezon ${PX.vf.slice(8)}.${PX.vf.slice(5,7)}–${(PX.vt||"").slice(8)}.${(PX.vt||"").slice(5,7)}.${(PX.vt||"").slice(0,4)}`:""}</div>${routes.map(k=>{const [s,a,b]=k.split("|"),rs=PX.items.filter(x=>x.service+"|"+x.zone_a+"|"+x.zone_b==k);return `<div class="pl">${s=="transfer"?"Transfer":"Ara Transfer"} · ${esc(zl(a))} ↔ ${esc(zl(b))}: ${rs.map(x=>(x.tier?x.tier:"kişi başı")+" "+fc(x.amount,x.currency)).join(" · ")}</div>`}).join("")}${unk.length?`<p class="sub warn">Tanınmayan bölge: ${esc(unk.join(", "))}. Kaydedilir, ama işlerde bu adla geçmezse fiyatlanmaz.</p>`:""}${PX.skip.length?`<p class="sub">Atlanan satırlar (tur vb.): ${esc(PX.skip.join(", "))}</p>`:""}<div class="row"><button onclick="savePriceX()">Fiyat listesini kaydet</button><button class="alt" onclick="PX=null;$('#xp').innerHTML='';$('#xm').textContent=''">Vazgeç</button></div>`;
 }
+async function savePriceX(){
+  const name=$("#xa").value.trim(),e=$("#xm");if(!name){e.textContent="Önce acentayı yaz.";e.className="sub bad";return}if(!PX)return;
+  let aid;try{aid=await agId(name)}catch(x){e.textContent=x.message;e.className="sub bad";return}
+  let d=sb.from("price_items").delete().eq("company_id",co.id).eq("agency_id",aid);d=PX.vf?d.eq("valid_from",PX.vf):d.is("valid_from",null);const dr=await d;if(dr.error){e.textContent=errText(dr.error);e.className="sub bad";return}
+  const q=await sb.from("price_items").insert(PX.items.map(x=>({company_id:co.id,agency_id:aid,service:x.service,zone_a:x.zone_a,zone_b:x.zone_b,tier:x.tier,amount:x.amount,currency:x.currency,valid_from:PX.vf||null,valid_to:PX.vt||null})));
+  if(q.error){e.textContent=errText(q.error);e.className="sub bad";return}PX=null;await vehiclesView("c");
+}
+async function addItem(){
+  const name=$("#ia2").value.trim(),a=num($("#im2").value),za=zoneFromText($("#iz1").value),zb=zoneFromText($("#iz2").value);
+  if(!name||!za||!zb){pm("Acenta ve iki bölgeyi yaz.",true);return}if(a==null||a<=0){pm("Tutarı yaz.",true);return}
+  let aid;try{aid=await agId(name)}catch(x){pm(x.message,true);return}
+  const r=await sb.from("price_items").insert({company_id:co.id,agency_id:aid,service:$("#is2").value,zone_a:za,zone_b:zb,tier:+$("#it2").value,amount:a,currency:$("#iu2").value});
+  if(r.error){pm(r.error.code==="23505"?"Bu fiyat zaten var. Değiştirmek için önce eskisini sil.":errText(r.error),true);return}await vehiclesView("c");
+}
+async function delItem(id){const r=await sb.from("price_items").delete().eq("id",id);if(r.error){alert(errText(r.error));return}await vehiclesView("c")}
+async function delAgencyPrices(aid,name){if(!confirm(name+" acentasının bütün fiyatları silinsin mi? İşlere daha önce yazılmış fiyatlar değişmez."))return;const r=await sb.from("price_items").delete().eq("company_id",co.id).eq("agency_id",aid);if(r.error){alert(errText(r.error));return}await vehiclesView("c")}
 async function applyPrices(){
   pm("Hesaplanıyor…");
-  const r=await sb.from("jobs").select("id,job_date,job_type,from_city,to_city,pax,agency_id,vehicle_id,run_code,job_stops(region,pax)").eq("company_id",co.id).eq("amount",0).neq("status","tamamlandi").not("agency_id","is",null).gte("job_date",today(new Date(Date.now()-60*864e5))).limit(500);
+  const r=await sb.from("jobs").select("id,job_date,job_type,from_city,to_city,pax,agency_id,vehicle_id,vehicle_type,run_code,job_stops(seq,region,place,pax)").eq("company_id",co.id).eq("amount",0).neq("status","tamamlandi").not("agency_id","is",null).gte("job_date",today(new Date(Date.now()-60*864e5))).limit(500);
   if(r.error){pm(errText(r.error),true);return}
   let ok=0;const miss=[],tot={};
   for(const j of r.data||[]){const p=priceFor(j);
@@ -954,7 +1041,7 @@ async function addVeh(){
   const plate=$("#pl").value.trim().toUpperCase();
   if(!plate){msg("Plakayı yaz.",true);return}
   const o=num($("#od").value);
-  const r=await sb.from("vehicles").insert({company_id:co.id,plate,monthly_fixed_cost:num($("#fx").value)||0,base_consumption:num($("#bc").value),home_city:$("#hc").value.trim()||null,capacity:(c=>c&&c>0?Math.round(c):null)(num($("#cp").value)),vehicle_class:$("#vc").value||null,odometer_km:o==null?null:Math.round(o)});
+  const r=await sb.from("vehicles").insert({company_id:co.id,plate,monthly_fixed_cost:num($("#fx").value)||0,base_consumption:num($("#bc").value),home_city:$("#hc").value.trim()||null,capacity:(c=>c&&c>0?Math.round(c):null)(num($("#cp").value)),odometer_km:o==null?null:Math.round(o)});
   if(r.error){msg(r.error.code==="23505"?"Bu plaka zaten kayıtlı.":"Kaydedilemedi: "+r.error.message,true);return}
   await vehiclesView();
 }
@@ -964,6 +1051,6 @@ async function delVeh(id,plate){
   if(r.error){alert("Silinemedi: bu araca bağlı sefer ya da kayıtlar olabilir.");return}
   await vehiclesView();
 }
-for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD","savePaste","readPaste","undoJob","setCap","makeInvite","delInvite","delMember","joinInvite","savePw","resetPw","addFuel","addExp","delFuel","delExp","setCls","addRule","delRule","applyPrices","saveKm","sendDay","addDoc","delDoc","setSvc"])globalThis[n]=once(n,globalThis[n]);
+for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD","savePaste","readPaste","undoJob","setCap","makeInvite","delInvite","delMember","joinInvite","savePw","resetPw","addFuel","addExp","delFuel","delExp","applyPrices","saveKm","sendDay","addDoc","delDoc","setSvc","saveFuelX","savePriceX","addItem","delItem","delAgencyPrices"])globalThis[n]=once(n,globalThis[n]);
 boot().catch(e=>{$("#app").innerHTML=`<p class="bad">Uygulama açılamadı: ${esc(e.message)}. Bağlantını kontrol edip sayfayı yenile.</p>`});
 </script></body></html>
