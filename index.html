@@ -66,6 +66,7 @@ const once=(n,f)=>async(...a)=>{if(BUSY)return;BUSY=true;const g=GEN,tm=setTimeo
 function msg(t,bad){const m=$("#msg");if(m){m.textContent=t||"";m.className=bad?"bad":"ok"}}
 let user=null,co=null,ROLE="owner";
 const REC=typeof location!="undefined"&&/type=recovery/.test(location.hash);
+const INV=(()=>{try{const m=location.search.match(/[?&]davet=([A-Za-z0-9]{8})/);if(m){localStorage.setItem("ft_invite",m[1].toUpperCase());history.replaceState(null,"",location.pathname+location.hash)}return localStorage.getItem("ft_invite")||""}catch(e){return ""}})();
 
 async function boot(){
   const r=await sb.auth.getSession();
@@ -79,7 +80,7 @@ function authView(){
   <label>E-posta</label><input id="em" type="email" autocomplete="email">
   <label>Şifre (en az 6 karakter)</label><input id="pw" type="password" autocomplete="current-password">
   <div class="row"><button onclick="login()">Giriş yap</button><button class="alt" onclick="signup()">Kayıt ol</button></div>
-  <p id="msg" class="sub" role="status"></p><button class="x n" onclick="resetPw()">Şifremi unuttum</button></div>`;
+  <p id="msg" class="sub" role="status"></p><button class="x n" onclick="resetPw()">Şifremi unuttum</button></div>${INV?`<p class="sub">Davet kodun kaydedildi (${esc(INV)}). Önce kendi e-postanla kayıt ol ya da giriş yap; sonra firmaya katılacaksın.</p>`:""}`;
 }
 async function login(){
   msg("Giriş yapılıyor…");
@@ -107,15 +108,13 @@ async function home(){
 }
 
 function companyView(){
-  $("#app").innerHTML=`<h1>Hoş geldin</h1><p class="sub">Başlamak için firmanı oluştur.</p>
-  <div class="card"><label>Firma adı</label><input id="cn">
-  <div class="row"><button onclick="makeCompany()">Firmayı oluştur</button><button class="alt" onclick="logout()">Çıkış</button></div>
-  <p id="msg" class="sub" role="status"></p></div>
-  <div class="card"><h2>Davet kodum var</h2><p class="sub">Bir firmanın operasyoncusuysan, firma sahibinin verdiği kodu yaz.</p><label>Davet kodu</label><input id="ic" autocapitalize="characters" autocomplete="off"><div class="row"><button onclick="joinInvite()">Firmaya katıl</button></div></div>`;
+  const inv=`<div class="card"><h2>Bir firmaya katılıyorum</h2><p class="sub">Firma sahibi sana davet kodu ya da bağlantı gönderdiyse bunu kullan. Kendi firmanı kurma.</p><label>Davet kodu</label><input id="ic" autocapitalize="characters" autocomplete="off" value="${esc(INV)}"><div class="row"><button onclick="joinInvite()">Firmaya katıl</button></div><p id="imsg2" class="sub" role="status"></p></div>`;
+  const own=`<div class="card"><h2>Kendi firmamı kuruyorum</h2><p class="sub">Firma sahibiysen ve sistemi ilk kez kuruyorsan.</p><label>Firma adı</label><input id="cn"><div class="row"><button onclick="makeCompany()">Firmayı oluştur</button></div><p id="msg" class="sub" role="status"></p></div>`;
+  $("#app").innerHTML=`<div class="top"><h1>Hoş geldin</h1><button class="alt" onclick="logout()">Çıkış</button></div>${INV?`<p class="sub">Davet kodun hazır. "Firmaya katıl"a basman yeterli.</p>`+inv+own:inv+own}`;
 }
 async function joinInvite(){
-  const c=$("#ic").value.trim();if(!c){msg("Davet kodunu yaz.",true);return}
-  const r=await sb.rpc("accept_invite",{p_code:c});if(r.error){msg(errText(r.error),true);return}await home();
+  const c=$("#ic").value.trim(),e=$("#imsg2"),bad=t=>{if(e){e.textContent=t;e.className="sub bad"}};if(!c){bad("Davet kodunu yaz.");return}
+  const r=await sb.rpc("accept_invite",{p_code:c});if(r.error){bad(errText(r.error));return}try{localStorage.removeItem("ft_invite")}catch(x){}await home();
 }
 async function resetPw(){
   const email=$("#em").value.trim();if(!email){msg("Önce e-posta adresini yaz.",true);return}
@@ -376,13 +375,35 @@ function diffRun(e,r){
   if(add.length)d.push("Eklenen yolcu: "+add.join(", "));if(rem.length)d.push("Çıkan yolcu: "+rem.join(", "));
   return d;
 }
+const FLB=["Buluşma Saat","Buluşma Yeri","Güzergah","Bırakma Yeri","Uçuş Kodu/ Saat","Müşteri","Gsm No","Karşılama Bordu","Şoför","Plaka","İkram","Operasyon Not","Araç Tipi","Bebek Koltuğu","Gönderen","Ödeyen","Ödeme Durumu","Ücret","Kişi Sayısı/Çocuk","Notlar"];
+function parseForm(pages){
+  const items=(pages[0]||[]).slice().sort((a,b)=>b.y-a.y||a.x-b.x),rows=[];
+  for(const it of items){const r=rows[rows.length-1];if(r&&Math.abs(r.y-it.y)<=3)r.it.push(it);else rows.push({y:it.y,it:[it]})}
+  const lines=rows.map(r=>r.it.sort((a,b)=>a.x-b.x).map(i=>i.s.trim()).join(" ").replace(/\s+/g," ")),all=lines.join("\n");
+  if(!/ARA[CÇ]\s*G[ÖO]REV\s*FORMU/i.test(all))return null;
+  const lre=FLB.map(l=>({l,re:new RegExp(l.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/\s+/g,"\\s*").replace(/\//g,"\\s*/\\s*"),"i")})),v={};
+  for(const ln of lines){const hits=[];lre.forEach(x=>{const m=ln.match(x.re);if(m)hits.push({l:x.l,i:m.index,e:m.index+m[0].length})});hits.sort((a,b)=>a.i-b.i);
+    hits.forEach((x,k)=>{let val=ln.slice(x.e,k+1<hits.length?hits[k+1].i:ln.length).replace(/^\s*:\s*/,"").trim();if(!(x.l in v)||!v[x.l])v[x.l]=val})}
+  const dm=all.match(/(\d{2})[./](\d{2})[./](\d{4})/),no=(all.match(/\b(\d{5,8})\b/)||[])[1]||"",tm=(v["Buluşma Saat"]||"").match(/([01]?\d|2[0-3])[:.]([0-5]\d)/);
+  const g=(v["Güzergah"]||"").split(/\s+[-–>]\s+/),from=(g[0]||v["Buluşma Yeri"]||"").trim(),to=(g[1]||v["Bırakma Yeri"]||"").trim();
+  const px=(v["Kişi Sayısı/Çocuk"]||"").match(/(\d+)\s*\/\s*(\d+)/),pax=px?(+px[1])+(+px[2]):"",fee=num(v["Ücret"]),od=(v["Ödeme Durumu"]||"").toLocaleLowerCase("tr");
+  const air=x=>PAIR.test(" "+x+" ");
+  const j={src:"pdf",raw:["Araç görev formu"+(no?" "+no:""),v["Notlar"]?"Not: "+v["Notlar"]:"",v["Operasyon Not"]?"Operasyon: "+v["Operasyon Not"]:"",v["Gönderen"]?"Gönderen: "+v["Gönderen"]:""].filter(Boolean).join("\n"),
+    date:dm?dm[3]+"-"+dm[2]+"-"+dm[1]:"",time:tm?tm[1].padStart(2,"0")+":"+tm[2]:"",from,to,pax:pax?String(pax):"",amount:fee?fee:"",cur:/eur|€/i.test(v["Ücret"]||"")?"EUR":"TRY",mode:/nakit|şoför|sofor|elden/.test(od)?"sofor_nakit":"acenta_cari",
+    vtype:(v["Araç Tipi"]||"").toLocaleUpperCase("tr"),jtype:air(to)?"depar":air(from)?"varis":"transfer",partner:"",share:"",vid:"",did:"",agency:v["Ödeyen"]||"",guest:v["Müşteri"]||""};
+  const place=j.jtype=="varis"?(v["Bırakma Yeri"]||to):(v["Buluşma Yeri"]||from);j.stops=place?[{place,pax:+j.pax||0,names:j.guest?[j.guest]:[]}]:[];
+  return j;
+}
 async function readLists(inp){
   const files=[...inp.files];if(!files.length)return;
   im("Listeler okunuyor…");IMP=[];MISS=[];IMPW=[];const warn=IMPW;
-  try{for(const f of files){const r=parseTransferList(await pdfPages(f));if(!r.runs.length)warn.push(f.name+": tanınan iş bulunamadı (farklı bir liste biçimi olabilir)");r.warn.forEach(w=>warn.push(w));
+  const FJ=[];
+  try{for(const f of files){const pg=await pdfPages(f),r=parseTransferList(pg);if(!r.runs.length){const fj=parseForm(pg);if(fj)FJ.push(fj);else warn.push(f.name+": tanınan iş bulunamadı. Bu liste biçimini henüz tanımıyorum; örneğini gönderirsen eklenir.")}r.warn.forEach(w=>warn.push(w));
     r.runs.forEach(x=>{if(IMP.some(y=>y.key==x.key))warn.push(f.name+": "+(x.veh+" "+x.run).trim()+" başka dosyada da var, bir kez alındı");else IMP.push(x)})}}
   catch(e){im("PDF okunamadı: "+e.message,true);inp.value="";return}
   inp.value="";
+  if(FJ.length){PJ=PJ.concat(FJ);pasteView();const w=$("#wp"),d=w&&w.closest?w.closest("details"):null;if(d)d.open=true;const e=$("#wmsg");if(e){e.textContent=FJ.length+" görev formu okundu, aşağıda kontrol edip kaydet.";e.className="sub ok"}if(d&&d.scrollIntoView)d.scrollIntoView({block:"start"})}
+  if(!IMP.length&&FJ.length){im("");impView();return}
   IMP.forEach(r=>{r.code=(r.veh+" "+r.run).trim();r.vid="";r.did="";r.state="yeni";r.diff=[];r.ex=null});
   const dates=[...new Set(IMP.map(r=>r.date))];
   if(dates.length){
@@ -626,12 +647,9 @@ async function setRD(region,val){
   if(r.error){alert(errText(r.error));return}await vehiclesView("j");
 }
 let PJ=[];
-function parsePaste(text,now){
-  now=now||new Date();const iso=d=>d.toLocaleDateString("sv-SE",{timeZone:"Europe/Istanbul"}),out=[];let cur=null;
-  const L="A-Za-zÇĞİÖŞÜçğıöşü",W=pat=>new RegExp("(?:^|[^"+L+"])("+pat+")(?!["+L+"])","i"),AIR=W("BJV|DLM|ADB|AYT|havaliman[ıi]|havaalan[ıi]|airport");
-  for(let raw of String(text).split(/\r?\n/)){
-    raw=raw.replace(/^\s*\[?\d{1,2}[./]\d{1,2}[./]\d{2,4}[ ,]+\d{1,2}[:.]\d{2}(:\d{2})?\]?\s*(-\s*)?[^:\n]{1,40}:\s+/,"").trim();
-    if(!raw){cur=null;continue}
+const PL="A-Za-zÇĞİÖŞÜçğıöşü",PW=pat=>new RegExp("(?:^|[^"+PL+"])("+pat+")(?!["+PL+"])","i"),PAIR=PW("BJV|DLM|ADB|AYT|havaliman[ıi]|havaalan[ıi]|airport");
+function lineFields(raw,now){
+  const iso=d=>d.toLocaleDateString("sv-SE",{timeZone:"Europe/Istanbul"}),L=PL,W=PW,AIR=PAIR;
     let s=" "+raw.replace(/\t+|\s\|\s/g,"  ")+" ",j={raw,date:"",time:"",from:"",to:"",pax:"",amount:"",cur:"TRY",mode:"acenta_cari",vtype:"",jtype:"",partner:"",share:"",vid:"",did:""};
     const take=re=>{const m=s.match(re);if(m)s=s.replace(m[0]," ");return m};
     let m=take(/(?:^|\s)(\d{1,2})[./](\d{1,2})[./](\d{2,4})(?=\s)/);
@@ -640,7 +658,7 @@ function parsePaste(text,now){
     else if(take(/(?:^|\s)bug[üu]n(?=\s)/i))j.date=iso(now);
     else if(m=take(/(?:^|\s)(\d{1,2})\/(\d{1,2})(?=\s)/))j.date=now.getFullYear()+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
     if(m=take(/(?:^|\s)([01]?\d|2[0-3])[:.]([0-5]\d)(?=\s)/))j.time=m[1].padStart(2,"0")+":"+m[2];
-    if(m=take(/(\d{1,3})\s*(?:pax|px|ki[şs]i|yolcu)(?![A-Za-zÇĞİÖŞÜçğıöşü])/i))j.pax=m[1];
+    if(m=take(/(\d{1,3})\s*(?:pax|px|k[iİıI][şŞsS][iİıI]|yolcu)(?![A-Za-zÇĞİÖŞÜçğıöşü])/i))j.pax=m[1];
     const tl=[];let t;while(t=take(/(?:^|\s)(\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d+,\d{2})(?=\s)/))tl.push(t);
     if(m=take(/(\d[\d.,]*)\s*(€|euro|eur|erou|avro|tl|₺|try|lira|usd|\$|dolar|gbp|£|pound|sterlin)(?![A-Za-zÇĞİÖŞÜçğıöşü])/i)){const c=m[2].toLocaleLowerCase("tr");j.amount=num(m[1]);j.cur=/€|eur|erou|avro/.test(c)?"EUR":/usd|\$|dolar/.test(c)?"USD":/gbp|£|pound|sterlin/.test(c)?"GBP":"TRY";if(tl.length)j.guest=m[1]+" "+j.cur}
     if(tl.length){j.amount=num(tl[0][1]);j.cur="TRY";if(tl[1]){j.share=num(tl[1][1]);const b=raw.slice(0,raw.lastIndexOf(tl[1][1])).trim().split(/\s+/).pop();if(b&&new RegExp("^["+L+"]{3,}$").test(b))j.partner=b}}
@@ -652,8 +670,44 @@ function parsePaste(text,now){
     else if(AIR.test(raw)){const cells=raw.split(/\t+|\s\|\s|\s{2,}/),cell=cells.length>1?cells.find(c=>AIR.test(c)):s,ap=cell.match(AIR)[1],rest=cell.replace(ap,"  ").trim().split(/\s{2,}/).map(x=>x.trim()).filter(x=>x&&!/^\d+$/.test(x)).pop()||"";
       const r4=rest.split(" ").slice(-4).join(" ");if(j.jtype=="varis"){j.from=ap;j.to=r4}else{j.from=r4;j.to=ap}}
     if(!j.jtype)j.jtype=AIR.test(j.to)?"depar":AIR.test(j.from)?"varis":"";
-    if(!j.date&&!j.time&&cur){cur.raw+="\n"+raw;["pax","amount","from","to","vtype","partner","share"].forEach(k=>{if(!cur[k]&&j[k]){cur[k]=j[k];if(k=="amount")cur.cur=j.cur}});if(j.mode=="sofor_nakit")cur.mode=j.mode;continue}
-    if(!j.date)j.date=iso(now);out.push(j);cur=j;
+    j.rest=s.replace(/\s+/g," ").trim();
+    if(!j.from&&!j.to&&j.jtype){const pl=j.rest.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü ]/g," ").replace(/\s+/g," ").trim();if(pl){if(j.jtype=="depar"){j.from=pl;j.to="BJV"}else{j.from="BJV";j.to=pl}}}
+    return j;
+}
+const WAP=/^\s*\[?(\d{1,2})[./](\d{1,2})[./](\d{2,4})[ ,]+(\d{1,2})[:.](\d{2})(?:[:.]\d{2})?\]?\s*(?:-\s*)?([^:\n]{1,40}):\s?(.*)$/;
+function parsePaste(text,now){
+  now=now||new Date();const iso=d=>d.toLocaleDateString("sv-SE",{timeZone:"Europe/Istanbul"}),out=[],lines=String(text).split(/\r?\n/);
+  if(!lines.some(l=>WAP.test(l))){let cur=null;
+    for(let raw of lines){raw=raw.trim();if(!raw){cur=null;continue}const j=lineFields(raw,now);
+      if(!j.date&&!j.time&&cur){cur.raw+="\n"+raw;["pax","amount","from","to","vtype","partner","share"].forEach(k=>{if(!cur[k]&&j[k]){cur[k]=j[k];if(k=="amount")cur.cur=j.cur}});if(j.mode=="sofor_nakit")cur.mode=j.mode;continue}
+      if(!j.date)j.date=iso(now);delete j.rest;out.push(j);cur=j}
+    return out}
+  const msgs=[];lines.forEach(l=>{const m=l.match(WAP);if(m){msgs.push({d:(m[3].length==2?"20"+m[3]:m[3])+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0"),t:m[4].padStart(2,"0")+":"+m[5],b:[m[7]]})}else if(msgs.length)msgs[msgs.length-1].b.push(l)});
+  const seen=new Set(),agn=(typeof AGN!="undefined"?AGN:[]).map(a=>gnorm(a.name));
+  for(const ms of msgs){
+    const body=ms.b.map(x=>x.trim()).filter(Boolean),key=body.join("\n").replace(/\s+/g," ").toLocaleUpperCase("tr");if(!body.length||seen.has(key))continue;seen.add(key);
+    const mnow=new Date(ms.d+"T12:00:00+03:00");
+    const j={raw:body.join("\n"),date:"",time:"",from:"",to:"",pax:"",amount:"",cur:"TRY",mode:"acenta_cari",vtype:"",jtype:"",partner:"",share:"",vid:"",did:"",agency:"",stops:[],names:[]};let lone="";
+    body.forEach((ln,i)=>{
+      const l=ln.replace(/^([01]?\d|2[0-3])[,.]([0-5]\d)$/,"$1:$2");
+      let m=l.match(/^\s*\d+\s*[-.)]\s*(.+?)\s*[-–]\s*(\d+)\s*(?:k[iİıI][şŞsS][iİıI]|pax|px|yolcu)(?![A-Za-zÇĞİÖŞÜçğıöşü])\s*(?:[-–]\s*(.+))?$/i);
+      if(m){j.stops.push({place:m[1].trim(),pax:+m[2],names:m[3]?[m[3].trim()]:[]});return}
+      if(/^\+?[\d\s()-]{10,}$/.test(l))return;
+      const g=gnorm(l);
+      if(agn.includes(g)||(i==0&&body.length>1&&/^[A-ZÇĞİÖŞÜ]{3,15}$/.test(l.trim()))){if(!j.agency)j.agency=l.trim();return}
+      if(/^[A-Za-zÇĞİÖŞÜçğıöşü]+(?: [A-Za-zÇĞİÖŞÜçğıöşü]+){1,3}$/.test(l.trim())&&!/(transfer|den[iİ]ls[iİ]n|plakal|alacak|ki[şs]i|pax|otel|hotel|resort|depar|gel[iİ][şs]|var[ıi][şs]|havaliman|airport|yapar|bjv|dlm)/i.test(l)){j.names.push(l.trim());return}
+      const f=lineFields(l,mnow);
+      ["date","time","from","to","pax","vtype","jtype","partner","share"].forEach(k=>{if(!j[k]&&f[k])j[k]=f[k]});
+      if(j.amount===""&&f.amount!==""){j.amount=f.amount;j.cur=f.cur}if(f.mode=="sofor_nakit")j.mode=f.mode;
+      if(!lone&&(f.time||f.jtype))lone=f.rest;
+    });
+    if(!j.from&&!j.to&&j.jtype&&lone){const pl=lone.replace(/[^A-Za-zÇĞİÖŞÜçğıöşü ]/g," ").replace(/\s+/g," ").trim();if(pl){if(j.jtype=="depar"){j.from=pl;j.to="BJV"}else{j.from="BJV";j.to=pl}}}
+    if(j.stops.length&&!j.pax)j.pax=String(j.stops.reduce((s,x)=>s+x.pax,0));
+    if(!j.stops.length&&j.names.length){if(!j.pax)j.pax=String(j.names.length);j.stops=[{place:j.jtype=="varis"?j.to:j.from,pax:+j.pax||j.names.length,names:j.names}]}
+    j.guest=(j.stops[0]&&j.stops[0].names[0])||"";
+    const prev=out[out.length-1],weak=!j.time&&!j.from&&!j.to&&j.amount===""&&!j.stops.length&&j.raw.split(/\s+/).length<=3;
+    if(weak&&prev){prev.raw+="\n"+j.raw;prev.extra=(prev.extra||[]).concat([j.raw]);continue}
+    if(!j.date)j.date=ms.d;out.push(j);
   }
   return out;
 }
@@ -662,7 +716,7 @@ async function readPaste(){
   if(!PJ.length){e.textContent="Okunacak iş bulunamadı.";e.className="sub bad";return}
   const low=s=>String(s||"").trim().toLocaleLowerCase("tr"),pr=await sb.from("jobs").select("from_city,to_city,amount,currency").eq("company_id",co.id).gt("amount",0).order("created_at",{ascending:false}).limit(300),mem={};
   (pr.data||[]).forEach(x=>{const k=low(x.from_city)+"|"+low(x.to_city);if(!mem[k])mem[k]=x});
-  PJ.forEach(j=>{const d=DRV.find(x=>new RegExp("(^|\\s)"+x.name.split(" ")[0].replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(\\s|$)","i").test(j.raw));if(d)j.did=d.id;
+  PJ.forEach(j=>{const nm=x=>new RegExp("(^|\\s)"+gnorm(x.name.split(" ")[0])+"(\\s|$)").test(" "+gnorm((j.extra||[]).join(" "))+" ");const d=DRV.find(nm)||DRV.find(x=>new RegExp("(^|\\s)"+x.name.split(" ")[0].replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"(\\s|$)","i").test(j.raw));if(d)j.did=d.id;
     if(j.amount===""){const k=mem[low(j.from)+"|"+low(j.to)];if(k&&j.from){j.amount=Number(k.amount);j.cur=k.currency;j.mem=1}}});
   e.textContent=PJ.length+" iş okundu. Kontrol edip kaydet.";e.className="sub ok";pasteView();
 }
@@ -670,7 +724,7 @@ function pasteView(){
   if(!PJ.length){$("#wp").innerHTML="";return}
   const o=(a,f,sel)=>a.map(x=>`<option value="${x.id}" ${x.id==sel?"selected":""}>${esc(f(x))}</option>`).join(""),I=(i,k,ph,w,im)=>`<input class="sm" style="width:${w}px" placeholder="${ph}" aria-label="${ph}" ${im?`inputmode="${im}"`:""} value="${esc(PJ[i][k])}" onchange="PJ[${i}].${k}=this.value">`;
   let ag="";try{ag=localStorage.getItem("ft_agency_w")||""}catch(e){}
-  $("#wp").innerHTML=PJ.map((j,i)=>`<div class="stop" style="padding:10px 0"><span class="k">${esc(j.raw)}</span><br><input class="sm" type="date" aria-label="Tarih" value="${esc(j.date)}" onchange="PJ[${i}].date=this.value"> <input class="sm" type="time" aria-label="Saat" value="${esc(j.time)}" onchange="PJ[${i}].time=this.value"> ${I(i,"pax","kişi",60,"numeric")}<br>${I(i,"from","nereden",150)} → ${I(i,"to","nereye",150)}<br>${I(i,"amount","tutar",90,"decimal")} <select class="sm" onchange="PJ[${i}].cur=this.value">${["TRY","EUR","USD","GBP"].map(c=>`<option ${c==j.cur?"selected":""}>${c}</option>`).join("")}</select> <select class="sm" onchange="PJ[${i}].mode=this.value"><option value="acenta_cari" ${j.mode=="acenta_cari"?"selected":""}>Acenta cari</option><option value="sofor_nakit" ${j.mode=="sofor_nakit"?"selected":""}>Şoför nakit</option></select>${j.mem?' <span class="tag">son fiyat</span>':""}${j.guest?` <span class="k">misafirden ${esc(j.guest)}</span>`:""}<br>${I(i,"partner","işi atan",120)} ${I(i,"share","pay",80,"decimal")} <select class="sm" id="wv${i}" onchange="PJ[${i}].vid=this.value;defDrv(this.value,'wd${i}');PJ[${i}].did=$('#wd${i}').value"><option value="">Araç</option>${o(VEH,vl,j.vid)}</select> <select class="sm" id="wd${i}" onchange="PJ[${i}].did=this.value"><option value="">Şoför</option>${o(DRV,x=>x.name,j.did)}</select> <button class="x" onclick="PJ.splice(${i},1);pasteView()">Çıkar</button></div>`).join("")+`<label>Acenta (işi gönderen, boş bırakılabilir)</label><input id="wa" value="${esc(ag)}"><div class="row"><button onclick="savePaste()">${PJ.length} işi kaydet</button><button class="alt" onclick="PJ=[];pasteView()">Vazgeç</button></div>`;
+  $("#wp").innerHTML=PJ.map((j,i)=>`<div class="stop" style="padding:10px 0"><span class="k" style="white-space:pre-line">${esc(j.raw)}</span><br>${j.stops&&j.stops.length?`<span class="k">Duraklar: ${j.stops.map(s=>esc(s.place||"?")+" · "+s.pax+" kişi"+(s.names.length?" ("+esc(s.names.join(", "))+")":"")).join(" / ")}</span><br>`:""}<input class="sm" type="date" aria-label="Tarih" value="${esc(j.date)}" onchange="PJ[${i}].date=this.value"> <input class="sm" type="time" aria-label="Saat" value="${esc(j.time)}" onchange="PJ[${i}].time=this.value"> ${I(i,"pax","kişi",60,"numeric")}<br>${I(i,"from","nereden",150)} → ${I(i,"to","nereye",150)}<br>${I(i,"amount","tutar",90,"decimal")} <select class="sm" onchange="PJ[${i}].cur=this.value">${["TRY","EUR","USD","GBP"].map(c=>`<option ${c==j.cur?"selected":""}>${c}</option>`).join("")}</select> <select class="sm" onchange="PJ[${i}].mode=this.value"><option value="acenta_cari" ${j.mode=="acenta_cari"?"selected":""}>Acenta cari</option><option value="sofor_nakit" ${j.mode=="sofor_nakit"?"selected":""}>Şoför nakit</option></select>${j.mem?' <span class="tag">son fiyat</span>':""}${j.guest?` <span class="k">misafirden ${esc(j.guest)}</span>`:""}<br>${I(i,"agency","acenta",120)} ${I(i,"partner","işi atan",120)} ${I(i,"share","pay",80,"decimal")} <select class="sm" id="wv${i}" onchange="PJ[${i}].vid=this.value;defDrv(this.value,'wd${i}');PJ[${i}].did=$('#wd${i}').value"><option value="">Araç</option>${o(VEH,vl,j.vid)}</select> <select class="sm" id="wd${i}" onchange="PJ[${i}].did=this.value"><option value="">Şoför</option>${o(DRV,x=>x.name,j.did)}</select> <button class="x" onclick="PJ.splice(${i},1);pasteView()">Çıkar</button></div>`).join("")+`<label>Acenta (işte acenta yazmıyorsa bu kullanılır, boş bırakılabilir)</label><input id="wa" value="${esc(ag)}"><div class="row"><button onclick="savePaste()">${PJ.length} işi kaydet</button><button class="alt" onclick="PJ=[];pasteView()">Vazgeç</button></div>`;
 }
 async function savePaste(){
   const e=$("#wmsg"),bad=m=>{e.textContent=m;e.className="sub bad"},agency=$("#wa").value.trim(),rows=[];
@@ -678,15 +732,21 @@ async function savePaste(){
   try{const aid=await agId(agency);
     for(const j of PJ){const a=j.amount===""?0:num(j.amount),sh=j.share===""?0:num(j.share),px=j.pax===""?null:num(j.pax);
       if(!j.date){bad("Tarihi boş iş var.");return}if(a==null||a<0||sh==null||sh<0){bad("Tutar ya da pay hatalı: "+j.raw.slice(0,40));return}
-      rows.push({company_id:co.id,job_date:j.date,pickup_time:j.time||null,job_type:j.jtype||null,from_city:String(j.from).trim()||null,to_city:String(j.to).trim()||null,vehicle_type:j.vtype||null,vehicle_id:j.vid||null,driver_id:j.did||null,pax:px?Math.round(px):null,amount:a,currency:j.cur,collection_mode:j.mode,agency_id:aid,partner_agency_id:sh>0?await agId(j.partner):null,partner_share:sh,notes:j.raw.slice(0,500),source:"whatsapp"})}
+      rows.push({company_id:co.id,job_date:j.date,pickup_time:j.time||null,job_type:j.jtype||null,from_city:String(j.from).trim()||null,to_city:String(j.to).trim()||null,vehicle_type:j.vtype||null,vehicle_id:j.vid||null,driver_id:j.did||null,pax:px?Math.round(px):null,guest_name:j.guest||null,amount:a,currency:j.cur,collection_mode:j.mode,agency_id:String(j.agency||"").trim()?await agId(j.agency):aid,partner_agency_id:sh>0?await agId(j.partner):null,partner_share:sh,notes:j.raw.slice(0,500),source:j.src||"whatsapp"})}
   }catch(x){bad(x.message);return}
-  const r=await sb.from("jobs").insert(rows);if(r.error){bad("Kaydedilemedi: "+r.error.message);return}
-  FLASH="";PJ=[];JF="acik";await vehiclesView("j");const e2=$("#wmsg");if(e2){e2.textContent=rows.length+" iş kaydedildi.";e2.className="sub ok"}
+  const r=await sb.from("jobs").insert(rows).select("id");if(r.error){bad("Kaydedilemedi: "+errText(r.error));return}
+  const ids=(r.data||[]).map(x=>x.id),warn=[];
+  for(let i=0;i<PJ.length;i++){const j=PJ[i],jid=ids[i];if(!jid||!j.stops||!j.stops.length)continue;
+    const reg=rk(j.jtype=="varis"?j.to:j.jtype=="depar"?j.from:j.to);
+    for(let k=0;k<j.stops.length;k++){const s=j.stops[k],q=await sb.from("job_stops").insert({company_id:co.id,job_id:jid,seq:k+1,place:s.place||null,region:reg||null,pickup_time:k==0&&j.time?j.time:null,pax:s.pax||0}).select("id").single();
+      if(q.error){warn.push(errText(q.error));continue}
+      if(s.names.length){const w=await sb.from("job_passengers").insert(s.names.map(n=>({company_id:co.id,job_id:jid,stop_id:q.data.id,full_name:n})));if(w.error)warn.push(errText(w.error))}}}
+  FLASH="";PJ=[];JF="acik";await vehiclesView("j");const e2=$("#wmsg");if(e2){e2.textContent=rows.length+" iş kaydedildi."+(warn.length?" Durak ya da yolcu bilgisi kaydedilemedi: "+warn[0]:"");e2.className="sub "+(warn.length?"bad":"ok")}
 }
 async function teamView(){
   const [m,i]=await Promise.all([sb.from("company_members").select("user_id,role,email,created_at").eq("company_id",co.id).order("created_at"),sb.from("company_invites").select("code,expires_at").eq("company_id",co.id).is("used_by",null).gt("expires_at",new Date().toISOString())]);
   const e=$("#team");if(!e||m.error)return;
-  e.innerHTML=`<div class="card"><h2>Ekip</h2><p class="sub">Operasyoncu Plan, İşler, Şoförler ve Araçlar'ı kullanır. Cari, Maliyet ve Panel'i, acenta fiyatlarını ve şoför kasasını görmez.</p>${(m.data||[]).map(x=>`<div class="veh"><div><b>${esc(x.email||(x.user_id==user.id?user.email:"")||"e-posta kayıtlı değil")}</b><br><span class="k">${x.role=="owner"?"Firma sahibi":"Operasyoncu"}</span></div>${x.role=="owner"?"":`<button class="x" data-u="${esc(x.user_id)}" data-e="${esc(x.email||"")}" onclick="delMember(this.dataset.u,this.dataset.e)">Firmadan çıkar</button>`}</div>`).join("")}${(i.data||[]).map(x=>`<div class="veh"><div>Davet kodu <b style="letter-spacing:2px">${esc(x.code)}</b><br><span class="k">${String(x.expires_at).slice(8,10)}.${String(x.expires_at).slice(5,7)} tarihine kadar geçerli, tek kullanımlık</span></div><button class="x" data-c="${esc(x.code)}" onclick="delInvite(this.dataset.c)">Kodu iptal et</button></div>`).join("")}<div class="row"><button onclick="makeInvite()">Operasyoncu davet et</button></div><p class="sub">Kodu operasyoncuna ilet. Bu siteye kendi e-postasıyla kayıt olup "Davet kodum var" bölümüne yazması yeterli.</p></div>`;
+  e.innerHTML=`<div class="card"><h2>Ekip</h2><p class="sub">Operasyoncu Plan, İşler, Şoförler ve Araçlar'ı kullanır. Cari, Maliyet ve Panel'i, acenta fiyatlarını ve şoför kasasını görmez.</p>${(m.data||[]).map(x=>`<div class="veh"><div><b>${esc(x.email||(x.user_id==user.id?user.email:"")||"e-posta kayıtlı değil")}</b><br><span class="k">${x.role=="owner"?"Firma sahibi":"Operasyoncu"}</span></div>${x.role=="owner"?"":`<button class="x" data-u="${esc(x.user_id)}" data-e="${esc(x.email||"")}" onclick="delMember(this.dataset.u,this.dataset.e)">Firmadan çıkar</button>`}</div>`).join("")}${(i.data||[]).map(x=>`<div class="veh"><div>Davet kodu <b style="letter-spacing:2px">${esc(x.code)}</b><br><span class="k">${String(x.expires_at).slice(8,10)}.${String(x.expires_at).slice(5,7)} tarihine kadar geçerli, tek kullanımlık</span></div><div><a class="lk" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent("Filo Takip'e operasyoncu olarak davetlisin. Bağlantıyı aç, kendi e-postanla kayıt ol ve \"Firmaya katıl\"a bas: "+location.origin+location.pathname+"?davet="+x.code+" (kod: "+x.code+")")}">WhatsApp'la gönder</a><button class="x" data-c="${esc(x.code)}" onclick="delInvite(this.dataset.c)">Kodu iptal et</button></div></div>`).join("")}<div class="row"><button onclick="makeInvite()">Operasyoncu davet et</button></div><p class="sub">Daveti "WhatsApp'la gönder" ile ilet. Operasyoncu bağlantıyı açıp kendi e-postasıyla kayıt olur ve "Firmaya katıl"a basar; ayrı firma kurmamalı.</p></div>`;
 }
 async function makeInvite(){
   const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789",b=crypto.getRandomValues(new Uint8Array(8));let code="";b.forEach(x=>code+=A[x%32]);
