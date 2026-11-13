@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr"><head><meta charset="utf-8">
+<html lang="tr"><head><meta charset="utf-8"><link rel="manifest" href="manifest.json"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Filo Takip"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Filo Takip</title>
 <style>
@@ -477,11 +477,13 @@ async function watchTick(render){
   if(fresh.length){fresh.forEach(x=>notify("Filo Takip: "+(x.j.run_code?"iş "+x.j.run_code:fM(jP(x.j))),x.t,x.j.id+x.k));try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}}
   watchView()}
 function watchView(){const e=$("#watch");if(!e)return;const dn={};DRV.forEach(d=>dn[d.id]=d);
-  if(!WATCH.length){e.innerHTML="";return}
+  const ios=/iPhone|iPad|iPod/.test(navigator.userAgent),pwa=matchMedia("(display-mode: standalone)").matches||navigator.standalone,N=window.Notification;
+  const nb=N&&N.permission=="granted"?'<p class="sub ok" style="margin:6px 0 0">Bu cihazda bildirimler açık.</p>':N&&N.permission=="denied"?'<p class="sub warn" style="margin:6px 0 0">Bildirimler bu cihazda engellenmiş; telefon ayarlarından bu site için izin ver.</p>':N?'<div class="row"><button class="alt" onclick="Notification.requestPermission().then(()=>watchView())">Bu cihazda bildirimleri aç</button></div>':ios&&!pwa?'<p class="sub" style="margin:6px 0 0">iPhone\'da bildirim için: Safari\'de paylaş düğmesi → "Ana Ekrana Ekle". Sonra uygulamayı ana ekrandaki simgeden aç, burada "Bu cihazda bildirimleri aç" düğmesi çıkar.</p>':'<p class="sub" style="margin:6px 0 0">Bu tarayıcı bildirim desteklemiyor.</p>';
+  if(!WATCH.length){e.innerHTML=`<div class="card"><h2>Canlı takip</h2><p class="sub" style="margin:0">Şu an uyarı yok. Uygulama açıkken her dakika kontrol edilir.</p>${nb}</div>`;return}
   e.innerHTML=`<div class="card" style="border-color:var(--neg,#b83a2b)"><h2>Canlı takip</h2>${WATCH.map(x=>{const j=x.j,v=VEH.find(y=>y.id==j.vehicle_id),d=dn[j.driver_id],tel=d&&d.phone?String(d.phone).replace(/[^\d+]/g,""):"";
     return `<div class="pl"><b class="${x.lvl==2?"neg":"warn"}">${fM(jP(j))} ${TLN[j.job_type]||""}${j.run_code?" · iş "+esc(j.run_code):""}</b> · ${esc(v?v.plate:"")}${d?" · "+esc(d.name):""}<br>${esc(x.t)}${tel?` <a class="lk" href="tel:${esc(tel)}">Kaptanı ara</a>`:""} <button class="x" onclick="snooze('${j.id+x.k}')">30 dk sustur</button>
     ${(x.res||[]).map(s=>`<br><span class="k">Öneri: ${esc(s.txt)}</span> <button class="x n" onclick="applyRescue('${j.id}','${s.w.id}','${s.k?s.k.id:""}','${s.u?s.u.id:""}')">Uygula</button>`).join("")}${x.late&&!(x.res||[]).length?'<br><span class="k">Zamanında yetişebilecek boş araç bulunamadı.</span>':""}</div>`}).join("")}
-  ${window.Notification&&Notification.permission=="default"?'<div class="row"><button class="alt" onclick="Notification.requestPermission().then(()=>watchView())">Bu cihazda bildirimleri aç</button></div>':""}<p class="sub">Uygulama açıkken her dakika kontrol edilir. Konum yalnızca kaptan düğmeye bastığında bilinir; diğer durumlarda saat ve plana göre tahmin edilir.</p></div>`}
+  ${nb}<p class="sub">Uygulama açıkken her dakika kontrol edilir. Konum yalnızca kaptan düğmeye bastığında bilinir; diğer durumlarda saat ve plana göre tahmin edilir.</p></div>`}
 async function applyRescue(jid,wid,kid,uid){
   const w=VEH.find(x=>x.id==wid),u=VEH.find(x=>x.id==uid);if(!confirm(uid?`İş ${w.plate} aracına, bu aracın sonraki işi ${u.plate} aracına verilsin mi? Şoförlere yeni işlerini göndermeyi unutma.`:`İş ${w.plate} aracına verilsin mi? Şoföre yeni işini göndermeyi unutma.`))return;
   const up=async(id,v)=>{const x={vehicle_id:v.id,driver_id:v.default_driver_id||null};const r=await sb.from("jobs").update(x).eq("id",id);if(r.error)throw r.error};
