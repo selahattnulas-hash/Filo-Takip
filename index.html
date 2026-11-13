@@ -468,10 +468,12 @@ function stopsTxt(j,now){const ev=EV[j.id]||[],c=ev.filter(e=>e.kind=="cikti").p
   return `<br><span class="k">Tahmini: ${ch.map(x=>`${esc(String(x.n||"").slice(0,22))} ~${fM(x.t)}${x.late?` <span class="neg">(${x.late} dk geç)</span>`:""}`).join(" · ")}</span>`}
 let WATCH=[],WT=null,WSEEN=(()=>{try{const x=JSON.parse(localStorage.getItem("ft_wseen")||"{}");return x.d==new Date().toDateString()?x:{d:new Date().toDateString()}}catch(e){return{d:new Date().toDateString()}}})();
 let SWR=null;try{if("serviceWorker" in navigator&&location.protocol=="https:")navigator.serviceWorker.register("sw.js").then(r=>SWR=r).catch(()=>{})}catch(e){}
-const VAPID_PUB="BOd5VC4gBkWcLKcQmw-dCxOYOpoufjRdNpieTRvguO8wOH89N9nCte6EePTP1a8kf7lUvJOqM9PwjrtmJM7BcWk",PUSH_FN="https://itsdtgvicgynymjrdhgn.supabase.co/functions/v1/watch-push";let PUSHOK=false,WA={};
+const PUSH_FN="https://itsdtgvicgynymjrdhgn.supabase.co/functions/v1/watch-push";let PUSHOK=false,WA={};
 const b64u=s=>{s=s.replace(/-/g,"+").replace(/_/g,"/");s+="===".slice((s.length+3)%4);const r=atob(s),a=new Uint8Array(r.length);for(let i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a};
 async function pushOn(ask){try{if(!("serviceWorker" in navigator)||!window.PushManager||!window.Notification||!co||!user)return false;if(ask&&Notification.permission=="default")await Notification.requestPermission();if(Notification.permission!="granted")return false;
-  const reg=await navigator.serviceWorker.ready;let s=await reg.pushManager.getSubscription();if(!s)s=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(VAPID_PUB)});
+  const kr=await fetch(PUSH_FN+"?vapid=1").then(r=>r.json()).catch(()=>null);if(!kr||!kr.key)return false;const K=b64u(kr.key),reg=await navigator.serviceWorker.ready;let s=await reg.pushManager.getSubscription();
+  if(s&&s.options&&s.options.applicationServerKey){const a=new Uint8Array(s.options.applicationServerKey);if(a.length!=K.length||a.some((x,i)=>x!=K[i])){await s.unsubscribe();s=null}}
+  if(!s)s=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:K});
   const j=s.toJSON(),r=await sb.from("push_subs").upsert({company_id:co.id,user_id:user.id,email:user.email,endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth,ua:navigator.userAgent.slice(0,200)},{onConflict:"endpoint"});PUSHOK=!r.error;return PUSHOK}catch(e){return false}}
 async function ackAlert(id,sn){const r=await sb.rpc("ack_alert",{p_id:id,p_snooze:sn||0});if(r.error){alert(errText(r.error));return}await watchTick()}
 function notify(title,body,tag){try{if(PUSHOK||!window.Notification||Notification.permission!="granted")return;if(SWR&&SWR.showNotification){SWR.showNotification(title,{body,tag});return}new Notification(title,{body,tag})}catch(e){}}

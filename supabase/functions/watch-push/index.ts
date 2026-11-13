@@ -87,7 +87,13 @@ function estEnd(j){
   return null;
 }
 const SB=createClient(Deno.env.get("SUPABASE_URL"),Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),{auth:{persistSession:false}});
-webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT")||"mailto:selahattnulas@gmail.com",Deno.env.get("VAPID_PUBLIC"),Deno.env.get("VAPID_PRIVATE"));
+const b64u=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+let KEYS=null;
+async function keys(){if(KEYS)return KEYS;const r=await SB.from("app_secrets").select("name,value").in("name",["vapid_public","vapid_private"]);const m={};(r.data||[]).forEach(x=>m[x.name]=x.value);
+  if(!m.vapid_public||!m.vapid_private){const kp=await crypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);const raw=await crypto.subtle.exportKey("raw",kp.publicKey),jw=await crypto.subtle.exportKey("jwk",kp.privateKey);
+    m.vapid_public=b64u(raw);m.vapid_private=jw.d;await SB.from("app_secrets").upsert([{name:"vapid_public",value:m.vapid_public},{name:"vapid_private",value:m.vapid_private}],{onConflict:"name",ignoreDuplicates:true});
+    const again=await SB.from("app_secrets").select("name,value").in("name",["vapid_public","vapid_private"]);(again.data||[]).forEach(x=>m[x.name]=x.value)}
+  webpush.setVapidDetails("mailto:selahattnulas@gmail.com",m.vapid_public,m.vapid_private);KEYS=m;return m}
 const CORS={"access-control-allow-origin":"*","access-control-allow-headers":"content-type"};
 const json=(o,s=200)=>new Response(JSON.stringify(o),{status:s,headers:{...CORS,"content-type":"application/json"}});
 const istDate=()=>new Date().toLocaleDateString("en-CA",{timeZone:"Europe/Istanbul"});
@@ -124,8 +130,8 @@ async function ack(u){
   await SB.from("watch_alerts").update(up).eq("id",id);return json({ok:true})}
 Deno.serve(async req=>{
   if(req.method=="OPTIONS")return new Response(null,{headers:CORS});
-  const u=new URL(req.url);if(u.searchParams.get("ack"))return ack(u);
-  if(req.headers.get("x-cron-secret")!==Deno.env.get("CRON_SECRET"))return json({error:"forbidden"},403);
+  const u=new URL(req.url);if(u.searchParams.get("vapid"))return json({key:(await keys()).vapid_public});if(u.searchParams.get("ack"))return ack(u);
+  const cs=await SB.from("app_secrets").select("value").eq("name","cron").maybeSingle();if(!cs.data||req.headers.get("x-cron-secret")!==cs.data.value)return json({error:"forbidden"},403);await keys();
   const subs=(await SB.from("push_subs").select("id,company_id,endpoint,p256dh,auth")).data||[],by={};subs.forEach(s=>(by[s.company_id]=by[s.company_id]||[]).push(s));
   const day=istDate(),now=istMin(),out=[];for(const co in by){try{out.push(await runCompany(co,by[co],day,now))}catch(e){out.push({co,error:String(e)})}}
   return json({day,now,out})});
