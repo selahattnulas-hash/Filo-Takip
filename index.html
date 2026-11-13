@@ -69,7 +69,7 @@ const REC=typeof location!="undefined"&&/type=recovery/.test(location.hash);
 const INV=(()=>{try{const m=location.search.match(/[?&]davet=([A-Za-z0-9]{8})/);if(m){localStorage.setItem("ft_invite",m[1].toUpperCase());history.replaceState(null,"",location.pathname+location.hash)}return localStorage.getItem("ft_invite")||""}catch(e){return ""}})();
 
 const DTOK=(()=>{const m=location.search.match(/[?&]sofor=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);return m?m[1].toLowerCase():""})();
-let DI=null,DMSG="";
+let DI=null,DMSG="",DSEL=null,DPT=null,DGR=false;
 function nearGeo(lat,lng){let b=null,bd=1e9;for(const k in GEO){const [a,c]=GEO[k],d=(a-lat)**2+((c-lng)*Math.cos(lat*Math.PI/180))**2;if(d<bd){bd=d;b=k}}return b?{k:b,c:GEO[b],km:Math.round(Math.sqrt(bd)*111)}:null}
 const tHM=iso=>new Date(iso).toLocaleTimeString("tr-TR",{timeZone:"Europe/Istanbul",hour:"2-digit",minute:"2-digit"});
 function jobEnds(j){const st=(j.job_stops||j.stops||[]).slice().sort((a,b)=>a.seq-b.seq),f=st[0],l=st[st.length-1];
@@ -86,16 +86,25 @@ async function driverView(){
     return `<div class="card"><h2 style="margin:0">${h5(j.pickup_time)||"saat yok"} · ${TLN[j.job_type]||"İş"}${j.job_date!=DI.today?' <span class="k">(yarın '+dm(j.job_date)+')</span>':""}</h2><p class="sub" style="margin:4px 0">${esc(j.from_city||"?")} → ${esc(j.to_city||"?")} · ${j.pax||0} kişi${j.flight_no?" · uçuş "+esc(j.flight_no)+" "+h5(j.flight_time):""}${j.run_code?" · iş kodu "+esc(j.run_code):""}${j.plate?" · "+esc(j.plate):""}</p>
     ${st.map(s=>`<div class="pl">${h5(s.pickup_time)||"–"} <b>${esc(s.place||"")}</b> <span class="k">${esc(s.region||"")} · ${s.pax||0} kişi</span>${s.note?`<br><span class="warn">${esc(s.note)}</span>`:""}</div>`).join("")}
     ${ev.length?`<p class="sub" style="margin:6px 0 0">${ev.map(e=>(DSTEP.find(s=>s[0]==e.kind)||["",e.kind])[1]+" "+tHM(e.at)).join(" · ")}${al&&!has("birakti")&&etaAfter(j,al.at)?` · tahmini varış <b>${etaAfter(j,al.at)}</b>`:""}</p>`:""}
-    ${isT&&j.status!="tamamlandi"?nx?`<div class="row"><button onclick="drvStep('${j.id}','${nx[0]}',this)">${nx[1]}</button></div>`:'<p class="ok">İş bitti ✓</p>':""}</div>`};
+    ${isT&&j.status!="tamamlandi"?nx?`<div class="row"><button onclick="drvStep('${j.id}','${nx[0]}',this)">${nx[1]}</button></div>
+    <div class="row"><button class="alt" onclick="DSEL=DSEL&&DSEL.id=='${j.id}'&&DSEL.k=='g'?null:{id:'${j.id}',k:'g'};driverView()">Gecikeceğim</button><button class="alt" onclick="DSEL=DSEL&&DSEL.id=='${j.id}'&&DSEL.k=='s'?null:{id:'${j.id}',k:'s'};driverView()">Sorun var</button></div>
+    ${DSEL&&DSEL.id==j.id?DSEL.k=="g"?`<div class="row">${[10,20,30,45,60].map(m=>`<button class="alt" onclick="drvPing('${j.id}','gecikme',${m})">${m} dk</button>`).join("")}</div>`:`<label>Sorun ne?</label><input id="dsn" placeholder="ör. araç arızalandı, trafik kazası, müşteri yok"><div class="row"><button onclick="drvPing('${j.id}','sorun',null)">Gönder</button></div>`:""}`:'<p class="ok">İş bitti ✓</p>':""}</div>`};
   $("#app").innerHTML=`<h1>${esc(DI.driver||"Şoför")}</h1><p class="sub">${esc(DI.company||"")}${DI.vehicle?" · "+esc(DI.vehicle):""}</p>${DMSG?`<p class="ok">${esc(DMSG)}</p>`:""}
   ${J.length?J.map(card).join(""):'<div class="card"><p class="sub">Bugün ve yarın sana atanmış iş yok.</p></div>'}
   <div class="card"><h2>Yakıt aldım</h2>${DI.vehicle?`<p class="sub">${esc(DI.vehicle)} için. Fişin ve km saatinin fotoğrafını çek.</p><div class="f2"><div><label>Litre</label><input id="yl" inputmode="decimal"></div><div><label>Tutar (₺)</label><input id="ya" inputmode="decimal"></div><div><label>Km saati</label><input id="yo" inputmode="numeric"></div></div>
   <label>Fiş fotoğrafı</label><input type="file" id="yf" accept="image/*" capture="environment"><label>Km saati fotoğrafı</label><input type="file" id="yk" accept="image/*" capture="environment"><div class="row"><button onclick="drvFuel(this)">Yakıtı gönder</button></div><p id="ym" class="sub" role="status"></p>`:'<p class="sub">Sana tanımlı araç yok, patronuna söyle.</p>'}</div>
-  <div class="row"><button class="alt" onclick="DMSG='';driverView()">Yenile</button></div><p class="sub">Konum sadece bu düğmelere bastığında bir kez alınır, sürekli takip edilmez.</p>`;
+  <div class="row"><button class="alt" onclick="DMSG='';driverView()">Yenile</button></div><p class="sub">Konumun düğmelere bastığında ve bu sayfa ekranda açıkken 3 dakikada bir alınır; sayfa kapalıyken alınmaz.</p>`;
+  if(!DPT){DPT=setInterval(autoPing,180000);autoPing()}
 }
+async function drvPing(id,kind,m){const note=kind=="sorun"?($("#dsn")||{}).value||"":null;if(kind=="sorun"&&!note.trim()){alert("Kısaca sorunu yaz.");return}
+  const p=await getPos(),r=await sb.rpc("drv_ping",{p_token:DTOK,p_job:id,p_kind:kind,p_min:m,p_note:note,p_lat:p&&p.lat,p_lng:p&&p.lng,p_acc:p&&p.acc});
+  if(r.error){alert(errText(r.error));return}DSEL=null;DMSG=kind=="gecikme"?m+" dk gecikme bildirildi; operasyon haberdar edildi":"Sorun bildirildi; operasyon haberdar edildi, gerekirse seni arayacak";await driverView()}
+function activeJob(){const J=(DI&&DI.jobs||[]).filter(j=>j.job_date==DI.today&&j.status!="tamamlandi"),go=J.find(j=>(j.events||[]).some(e=>e.kind=="cikti"||e.kind=="aldi")&&!(j.events||[]).some(e=>e.kind=="birakti"));return go||J.find(j=>!(j.events||[]).some(e=>e.kind=="birakti"))||null}
+async function autoPing(){try{if(document.hidden)return;let ok=DGR;if(!ok&&navigator.permissions&&navigator.permissions.query){const s=await navigator.permissions.query({name:"geolocation"});ok=s.state=="granted"}if(!ok)return;
+  const p=await getPos();if(!p)return;const j=activeJob();await sb.rpc("drv_ping",{p_token:DTOK,p_job:j?j.id:null,p_kind:"konum",p_min:null,p_note:null,p_lat:p.lat,p_lng:p.lng,p_acc:p.acc})}catch(e){}}
 async function drvStep(id,kind,btn){
   if(btn){btn.disabled=true;btn.textContent="Konum alınıyor…"}
-  const p=await getPos(),r=await sb.rpc("drv_event",{p_token:DTOK,p_job:id,p_kind:kind,p_lat:p&&p.lat,p_lng:p&&p.lng,p_acc:p&&p.acc});
+  const p=await getPos();if(p)DGR=true;const r=await sb.rpc("drv_event",{p_token:DTOK,p_job:id,p_kind:kind,p_lat:p&&p.lat,p_lng:p&&p.lng,p_acc:p&&p.acc});
   if(r.error){alert(errText(r.error));if(btn){btn.disabled=false;btn.textContent=(DSTEP.find(s=>s[0]==kind)||[])[1]||"Tekrar dene"}return}
   DMSG=(DSTEP.find(s=>s[0]==kind)||["",""])[1]+" kaydedildi"+(p?"":" (konum alınamadı, telefonun konum iznini kontrol et)");await driverView();
 }
@@ -416,10 +425,12 @@ async function agId(name){
   if(a.error)throw new Error("Acenta kaydedilemedi: "+a.error.message);return a.data.id;
 }
 let EV={};
-async function loadEV(){const r=await sb.from("job_events").select("job_id,kind,lat,lng,at").eq("company_id",co.id).gte("at",new Date(Date.now()-4*864e5).toISOString()).order("at").limit(3000);EV={};if(r&&!r.error)(r.data||[]).forEach(e=>(EV[e.job_id]=EV[e.job_id]||[]).push(e))}
-function evTxt(j){const ev=EV[j.id];if(!ev||!ev.length)return "";const has=k=>ev.filter(e=>e.kind==k).pop(),c=has("cikti"),a=has("aldi"),b=has("birakti"),parts=[];
+async function loadEV(){const [r,p]=await Promise.all([sb.from("job_events").select("job_id,kind,lat,lng,at").eq("company_id",co.id).gte("at",new Date(Date.now()-4*864e5).toISOString()).order("at").limit(3000),sb.from("driver_pings").select("driver_id,job_id,kind,minutes,note,lat,lng,at").eq("company_id",co.id).gte("at",new Date(Date.now()-864e5).toISOString()).order("at").limit(3000)]);
+  EV={};if(r&&!r.error)(r.data||[]).forEach(e=>(EV[e.job_id]=EV[e.job_id]||[]).push(e));DP=p&&!p.error?p.data||[]:[]}
+function evTxt(j){const ev=EV[j.id]||[];if(!ev.length&&!DP.some(x=>x.job_id==j.id&&x.kind!="konum"))return "";const has=k=>ev.filter(e=>e.kind==k).pop(),c=has("cikti"),a=has("aldi"),b=has("birakti"),parts=[];
   if(c){let s="yola çıktı "+tHM(c.at);if(c.lat!=null){const n=nearGeo(c.lat,c.lng),{s:st}=jobEnds(j);if(n)s+=" ("+n.k.toLocaleLowerCase("tr")+" civarı"+(st?", alışa ~"+(n.k==st.k?2:roadKm({k:"_",c:[c.lat,c.lng]},st))+" km boş":"")+")"}parts.push(s)}
   if(a)parts.push("aldı "+tHM(a.at)+(!b&&etaAfter(j,a.at)?" · tahmini varış <b>"+etaAfter(j,a.at)+"</b>":""));if(b)parts.push("bıraktı "+tHM(b.at));
+  DP.filter(x=>x.job_id==j.id&&x.kind!="konum").forEach(x=>parts.push(`<span class="neg">${x.kind=="gecikme"?x.minutes+" dk gecikecek":"sorun: "+esc(x.note||"")}</span> (${tHM(x.at)})`));
   const l=ev.filter(e=>e.lat!=null).pop();return `<br><span class="k">Şoför: ${parts.join(" · ")}</span>${l?` <a class="k" href="https://maps.google.com/?q=${l.lat},${l.lng}" target="_blank" rel="noopener">haritada gör</a>`:""}`}
 
 // ---------- canlı takip: uyarılar, durak saatleri, kurtarma önerileri
@@ -428,6 +439,9 @@ const fM=x=>{x=((Math.round(x)%1440)+1440)%1440;return String(Math.floor(x/60)).
 const isoM=iso=>mOf(tHM(iso));
 const trv=(a,b)=>{if(!a||!b)return null;if(a.k&&b.k&&a.k==b.k)return 5;const km=roadKm(a,b);return Math.round(km<=15?km*1.4:21+(km-15)*0.7)+5};
 const ptLoc=e=>e&&e.lat!=null?{k:"_",c:[e.lat,e.lng]}:null;
+let DP=[];
+function lastPos(v,J,now){const ds=new Set(J.filter(x=>x.vehicle_id==v.id&&x.driver_id).map(x=>x.driver_id));if(v.default_driver_id)ds.add(v.default_driver_id);
+  const p=DP.filter(x=>x.kind=="konum"&&ds.has(x.driver_id)&&x.lat!=null).pop();if(!p)return null;const age=now-isoM(p.at);return age>=0&&age<=20?{loc:ptLoc(p),at:isoM(p.at)}:null}
 function jStart(j){const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq);if(j.job_type=="varis")return locOf(j.from_city)||locOf("BJV");const f=st[0];return f?locOf(f.region||f.place)||locOf(j.from_city):locOf(j.from_city)}
 function jP(j){if(j.job_type=="varis"&&(j.eta_landing||j.flight_time))return mOf(j.eta_landing||j.flight_time)+25;const st=(j.job_stops||[]).filter(s=>s.pickup_time).sort((a,b)=>a.pickup_time<b.pickup_time?-1:1);return mOf(j.pickup_time)??(st[0]?mOf(st[0].pickup_time):null)??mOf(j.flight_time)}
 function chain(j,from,t0){
@@ -464,7 +478,10 @@ function watchCalc(J,now){
     const P=jP(j);if(P==null)continue;const S=jStart(j),end=jEnd(j);
     if(!j.vehicle_id){if(now>=P-60&&now<P+30)A.push({j,k:"aracsiz",lvl:now>=P-30?2:1,t:`Araç atanmamış. Alış ${fM(P)}`,late:true});continue}
     const v=VEH.find(x=>x.id==j.vehicle_id);if(!v)continue;const others=J.filter(x=>x.id!=j.id);
-    if(!c&&!a){const st=vehState(v,now,others),busy=st.busy,T=trv(st.loc,S)??30,arr=Math.max(st.free,now)+T;
+    const jp=DP.filter(x=>x.job_id==j.id&&x.kind!="konum"),dl=jp.filter(x=>x.kind=="gecikme").pop(),so=jp.filter(x=>x.kind=="sorun").pop();
+    if(dl)A.push({j,k:"gecikme",lvl:2,t:`Kaptan ${dl.minutes} dk gecikeceğini bildirdi (saat ${tHM(dl.at)})`,late:true});
+    if(so)A.push({j,k:"sorun",lvl:2,t:`Kaptan sorun bildirdi (saat ${tHM(so.at)}): ${so.note||"açıklama yok"}`,late:true});
+    if(!c&&!a&&!dl&&!so){const st=vehState(v,now,others),busy=st.busy,lp=busy?null:lastPos(v,J,now),T=trv(lp?lp.loc:st.loc,S)??30,arr=Math.max(st.free,now)+T;
       if(busy&&arr>P+10)A.push({j,k:"zincir",lvl:2,t:`Önceki iş uzuyor: ${v.plate} buraya saat ~${fM(arr)} gibi varır (alış ${fM(P)}, ${Math.round(arr-P)} dk geç)`,late:true});
       else if(!busy&&now>=P-T-10&&now<P+20){const late=now+T>P+5;A.push({j,k:"cikmadi",lvl:late?2:1,t:late?`Kaptan yola çıktım demedi; şimdi çıksa alışa saat ~${fM(now+T)} gibi varır (alış ${fM(P)}). Ara ve sor.`:`Kaptanın yola çıkma zamanı: alış ${fM(P)}, yol ~${T} dk, en geç saat ${fM(P-T)} gibi çıkmalı`,late})}}
     if(c&&!a){const from=ptLoc(c)||vehState(v,isoM(c.at),others).loc,T=trv(from,S)??30,arr=isoM(c.at)+T;

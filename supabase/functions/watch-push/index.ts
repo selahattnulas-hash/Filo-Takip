@@ -9,6 +9,9 @@ const fM=x=>{x=((Math.round(x)%1440)+1440)%1440;return String(Math.floor(x/60)).
 const isoM=iso=>mOf(tHM(iso));
 const trv=(a,b)=>{if(!a||!b)return null;if(a.k&&b.k&&a.k==b.k)return 5;const km=roadKm(a,b);return Math.round(km<=15?km*1.4:21+(km-15)*0.7)+5};
 const ptLoc=e=>e&&e.lat!=null?{k:"_",c:[e.lat,e.lng]}:null;
+let DP=[];
+function lastPos(v,J,now){const ds=new Set(J.filter(x=>x.vehicle_id==v.id&&x.driver_id).map(x=>x.driver_id));if(v.default_driver_id)ds.add(v.default_driver_id);
+  const p=DP.filter(x=>x.kind=="konum"&&ds.has(x.driver_id)&&x.lat!=null).pop();if(!p)return null;const age=now-isoM(p.at);return age>=0&&age<=20?{loc:ptLoc(p),at:isoM(p.at)}:null}
 function jStart(j){const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq);if(j.job_type=="varis")return locOf(j.from_city)||locOf("BJV");const f=st[0];return f?locOf(f.region||f.place)||locOf(j.from_city):locOf(j.from_city)}
 function jP(j){if(j.job_type=="varis"&&(j.eta_landing||j.flight_time))return mOf(j.eta_landing||j.flight_time)+25;const st=(j.job_stops||[]).filter(s=>s.pickup_time).sort((a,b)=>a.pickup_time<b.pickup_time?-1:1);return mOf(j.pickup_time)??(st[0]?mOf(st[0].pickup_time):null)??mOf(j.flight_time)}
 function chain(j,from,t0){
@@ -45,7 +48,10 @@ function watchCalc(J,now){
     const P=jP(j);if(P==null)continue;const S=jStart(j),end=jEnd(j);
     if(!j.vehicle_id){if(now>=P-60&&now<P+30)A.push({j,k:"aracsiz",lvl:now>=P-30?2:1,t:`Araç atanmamış. Alış ${fM(P)}`,late:true});continue}
     const v=VEH.find(x=>x.id==j.vehicle_id);if(!v)continue;const others=J.filter(x=>x.id!=j.id);
-    if(!c&&!a){const st=vehState(v,now,others),busy=st.busy,T=trv(st.loc,S)??30,arr=Math.max(st.free,now)+T;
+    const jp=DP.filter(x=>x.job_id==j.id&&x.kind!="konum"),dl=jp.filter(x=>x.kind=="gecikme").pop(),so=jp.filter(x=>x.kind=="sorun").pop();
+    if(dl)A.push({j,k:"gecikme",lvl:2,t:`Kaptan ${dl.minutes} dk gecikeceğini bildirdi (saat ${tHM(dl.at)})`,late:true});
+    if(so)A.push({j,k:"sorun",lvl:2,t:`Kaptan sorun bildirdi (saat ${tHM(so.at)}): ${so.note||"açıklama yok"}`,late:true});
+    if(!c&&!a&&!dl&&!so){const st=vehState(v,now,others),busy=st.busy,lp=busy?null:lastPos(v,J,now),T=trv(lp?lp.loc:st.loc,S)??30,arr=Math.max(st.free,now)+T;
       if(busy&&arr>P+10)A.push({j,k:"zincir",lvl:2,t:`Önceki iş uzuyor: ${v.plate} buraya saat ~${fM(arr)} gibi varır (alış ${fM(P)}, ${Math.round(arr-P)} dk geç)`,late:true});
       else if(!busy&&now>=P-T-10&&now<P+20){const late=now+T>P+5;A.push({j,k:"cikmadi",lvl:late?2:1,t:late?`Kaptan yola çıktım demedi; şimdi çıksa alışa saat ~${fM(now+T)} gibi varır (alış ${fM(P)}). Ara ve sor.`:`Kaptanın yola çıkma zamanı: alış ${fM(P)}, yol ~${T} dk, en geç saat ${fM(P-T)} gibi çıkmalı`,late})}}
     if(c&&!a){const from=ptLoc(c)||vehState(v,isoM(c.at),others).loc,T=trv(from,S)??30,arr=isoM(c.at)+T;
@@ -104,15 +110,16 @@ async function push(subs,payload){let ok=0;
     catch(e){const c=e&&e.statusCode;if(c==404||c==410)await SB.from("push_subs").delete().eq("id",s.id)}}
   return ok}
 async function runCompany(co,subs,day,now){
-  const [jr,vr,rr,er,ar]=await Promise.all([
+  const [jr,vr,rr,er,ar,pr]=await Promise.all([
     SB.from("jobs").select("id,job_date,pickup_time,end_time,job_type,from_city,to_city,pax,status,vehicle_id,driver_id,run_code,flight_no,flight_time,eta_landing,job_stops(seq,place,region,pickup_time,pax)").eq("company_id",co).eq("job_date",day).limit(1000),
     SB.from("vehicles").select("id,plate,capacity,home_city,default_driver_id").eq("company_id",co),
     SB.from("region_durations").select("region,minutes").eq("company_id",co),
     SB.from("job_events").select("job_id,kind,lat,lng,at").eq("company_id",co).gte("at",new Date(Date.now()-2*864e5).toISOString()).order("at"),
-    SB.from("watch_alerts").select("*").eq("company_id",co).eq("alert_date",day)]);
+    SB.from("watch_alerts").select("*").eq("company_id",co).eq("alert_date",day),
+    SB.from("driver_pings").select("driver_id,job_id,kind,minutes,note,lat,lng,at").eq("company_id",co).gte("at",new Date(Date.now()-864e5).toISOString()).order("at")]);
   if(jr.error||vr.error||ar.error)return{co,error:(jr.error||vr.error||ar.error).message};
   VEH=vr.data||[];for(const k in RD)delete RD[k];Object.assign(RD,RD0);(rr.data||[]).forEach(x=>RD[x.region]=x.minutes);
-  EV={};(er.data||[]).forEach(e=>(EV[e.job_id]=EV[e.job_id]||[]).push(e));
+  EV={};(er.data||[]).forEach(e=>(EV[e.job_id]=EV[e.job_id]||[]).push(e));DP=pr&&!pr.error?pr.data||[]:[];
   const A=watchCalc(jr.data||[],now).filter(x=>x.lvl==2),ex={},seen=new Set();(ar.data||[]).forEach(x=>ex[x.job_id+"|"+x.kind]=x);let sent=0;
   for(const x of A){const key=x.j.id+"|"+x.k;seen.add(key);let e=ex[key];const v=VEH.find(y=>y.id==x.j.vehicle_id);
     const title=`${fM(jP(x.j))} ${TLN[x.j.job_type]||"İş"}${x.j.run_code?" · iş "+x.j.run_code:""}${v?" · "+v.plate:""}`,body=x.t+((x.res||[])[0]?"\nÖneri: "+x.res[0].txt:"");
