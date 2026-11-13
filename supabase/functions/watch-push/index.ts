@@ -10,7 +10,7 @@ const isoM=iso=>mOf(tHM(iso));
 const trv=(a,b)=>{if(!a||!b)return null;if(a.k&&b.k&&a.k==b.k)return 5;const km=roadKm(a,b);return Math.round(km<=15?km*1.4:21+(km-15)*0.7)+5};
 const ptLoc=e=>e&&e.lat!=null?{k:"_",c:[e.lat,e.lng]}:null;
 function jStart(j){const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq);if(j.job_type=="varis")return locOf(j.from_city)||locOf("BJV");const f=st[0];return f?locOf(f.region||f.place)||locOf(j.from_city):locOf(j.from_city)}
-function jP(j){if(j.job_type=="varis"&&j.flight_time)return mOf(j.flight_time)+25;const st=(j.job_stops||[]).filter(s=>s.pickup_time).sort((a,b)=>a.pickup_time<b.pickup_time?-1:1);return mOf(j.pickup_time)??(st[0]?mOf(st[0].pickup_time):null)??mOf(j.flight_time)}
+function jP(j){if(j.job_type=="varis"&&(j.eta_landing||j.flight_time))return mOf(j.eta_landing||j.flight_time)+25;const st=(j.job_stops||[]).filter(s=>s.pickup_time).sort((a,b)=>a.pickup_time<b.pickup_time?-1:1);return mOf(j.pickup_time)??(st[0]?mOf(st[0].pickup_time):null)??mOf(j.flight_time)}
 function chain(j,from,t0){
   const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq),out=[];let t=t0,cur=from;
   if(j.job_type=="varis"){const pts=st.length?st.map(s=>({n:s.place||s.region,l:locOf(s.region||s.place)})):[{n:j.to_city,l:locOf(j.to_city)}];
@@ -105,7 +105,7 @@ async function push(subs,payload){let ok=0;
   return ok}
 async function runCompany(co,subs,day,now){
   const [jr,vr,rr,er,ar]=await Promise.all([
-    SB.from("jobs").select("id,job_date,pickup_time,end_time,job_type,from_city,to_city,pax,status,vehicle_id,driver_id,run_code,flight_no,flight_time,job_stops(seq,place,region,pickup_time,pax)").eq("company_id",co).eq("job_date",day).limit(1000),
+    SB.from("jobs").select("id,job_date,pickup_time,end_time,job_type,from_city,to_city,pax,status,vehicle_id,driver_id,run_code,flight_no,flight_time,eta_landing,job_stops(seq,place,region,pickup_time,pax)").eq("company_id",co).eq("job_date",day).limit(1000),
     SB.from("vehicles").select("id,plate,capacity,home_city,default_driver_id").eq("company_id",co),
     SB.from("region_durations").select("region,minutes").eq("company_id",co),
     SB.from("job_events").select("job_id,kind,lat,lng,at").eq("company_id",co).gte("at",new Date(Date.now()-2*864e5).toISOString()).order("at"),
