@@ -9,7 +9,7 @@ const fM=x=>{x=((Math.round(x)%1440)+1440)%1440;return String(Math.floor(x/60)).
 const isoM=iso=>mOf(tHM(iso));
 const trv=(a,b)=>{if(!a||!b)return null;if(a.k&&b.k&&a.k==b.k)return 5;const km=roadKm(a,b);return Math.round(km<=15?km*1.4:21+(km-15)*0.7)+5};
 const ptLoc=e=>e&&e.lat!=null?{k:"_",c:[e.lat,e.lng]}:null;
-let DP=[],UETDS_ON=true;
+let DP=[],UETDS_ON=true,JW=[];
 function lastPos(v,J,now){const ds=new Set(J.filter(x=>x.vehicle_id==v.id&&x.driver_id).map(x=>x.driver_id));if(v.default_driver_id)ds.add(v.default_driver_id);
   const p=DP.filter(x=>x.kind=="konum"&&ds.has(x.driver_id)&&x.lat!=null).pop();if(!p)return null;const age=now-isoM(p.at);return age>=0&&age<=20?{loc:ptLoc(p),at:isoM(p.at)}:null}
 function jStart(j){const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq);if(j.job_type=="varis")return locOf(j.from_city)||locOf("BJV");const f=st[0];return f?locOf(f.region||f.place)||locOf(j.from_city):locOf(j.from_city)}
@@ -48,6 +48,8 @@ function watchCalc(J,now){
     const P=jP(j);if(P==null)continue;const S=jStart(j),end=jEnd(j);
     if(!j.vehicle_id){if(now>=P-60&&now<P+30)A.push({j,k:"aracsiz",lvl:now>=P-30?2:1,t:`Araç atanmamış. Alış ${fM(P)}`,late:true});continue}
     const v=VEH.find(x=>x.id==j.vehicle_id);if(!v)continue;const others=J.filter(x=>x.id!=j.id);
+    const ns=JW.find(w=>w.job_id==j.id&&w.kind=="noshow");if(ns){if(j.uetds_status=="noshow"||now-isoM(ns.started_at)<30)A.push({j,k:"noshow",lvl:2,t:`Kaptan yolcunun gelmediğini bildirdi (saat ${tHM(ns.started_at)}). Acentayı ara${UETDS_ON?"; U-ETDS'ye 30 dk içinde gelmeyen yolcuyu bildir":""}.`});continue}
+    const wo=JW.find(w=>w.job_id==j.id&&w.kind=="bekleme"&&!w.ended_at);if(wo&&now-isoM(wo.started_at)>=20)A.push({j,k:"bekleme",lvl:1,t:`Kaptan ${now-isoM(wo.started_at)} dk'dır yolcuyu bekliyor (saat ${tHM(wo.started_at)}'ten beri)`});
     if(UETDS_ON&&j.uetds_status!="bildirildi"&&j.uetds_status!="noshow"&&now>=P-90&&now<P+10)A.push({j,k:"uetds",lvl:(now>=P-60||j.uetds_status=="guncelle")?2:1,t:j.uetds_status=="guncelle"?`U-ETDS: işte değişiklik oldu (kişi, araç, şoför ya da saat); bildirimi güncelle`:`U-ETDS bildirimi işaretlenmedi: sefer ${fM(P)}, en geç saat ${fM(P-60)} bildirilmeli`});
     const jp=DP.filter(x=>x.job_id==j.id&&x.kind!="konum"),dl=jp.filter(x=>x.kind=="gecikme").pop(),so=jp.filter(x=>x.kind=="sorun").pop();
     if(dl)A.push({j,k:"gecikme",lvl:2,t:`Kaptan ${dl.minutes} dk gecikeceğini bildirdi (saat ${tHM(dl.at)})`,late:true});
@@ -111,17 +113,18 @@ async function push(subs,payload){let ok=0;
     catch(e){const c=e&&e.statusCode;if(c==404||c==410)await SB.from("push_subs").delete().eq("id",s.id)}}
   return ok}
 async function runCompany(co,subs,day,now){
-  const [jr,vr,rr,er,ar,pr,cr]=await Promise.all([
+  const [jr,vr,rr,er,ar,pr,cr,wr]=await Promise.all([
     SB.from("jobs").select("id,job_date,pickup_time,end_time,job_type,from_city,to_city,pax,status,vehicle_id,driver_id,run_code,flight_no,flight_time,eta_landing,uetds_status,job_stops(seq,place,region,pickup_time,pax)").eq("company_id",co).eq("job_date",day).limit(1000),
     SB.from("vehicles").select("id,plate,capacity,home_city,default_driver_id").eq("company_id",co),
     SB.from("region_durations").select("region,minutes").eq("company_id",co),
     SB.from("job_events").select("job_id,kind,lat,lng,at").eq("company_id",co).gte("at",new Date(Date.now()-2*864e5).toISOString()).order("at"),
     SB.from("watch_alerts").select("*").eq("company_id",co).eq("alert_date",day),
     SB.from("driver_pings").select("driver_id,job_id,kind,minutes,note,lat,lng,at").eq("company_id",co).gte("at",new Date(Date.now()-864e5).toISOString()).order("at"),
-    SB.from("companies").select("uetds_alerts").eq("id",co).maybeSingle()]);
+    SB.from("companies").select("uetds_alerts").eq("id",co).maybeSingle(),
+    SB.from("job_waits").select("job_id,kind,started_at,ended_at").eq("company_id",co).gte("started_at",new Date(Date.now()-864e5).toISOString())]);
   if(jr.error||vr.error||ar.error)return{co,error:(jr.error||vr.error||ar.error).message};
   VEH=vr.data||[];for(const k in RD)delete RD[k];Object.assign(RD,RD0);(rr.data||[]).forEach(x=>RD[x.region]=x.minutes);
-  EV={};(er.data||[]).forEach(e=>(EV[e.job_id]=EV[e.job_id]||[]).push(e));DP=pr&&!pr.error?pr.data||[]:[];UETDS_ON=!(cr&&cr.data&&cr.data.uetds_alerts===false);
+  EV={};(er.data||[]).forEach(e=>(EV[e.job_id]=EV[e.job_id]||[]).push(e));DP=pr&&!pr.error?pr.data||[]:[];UETDS_ON=!(cr&&cr.data&&cr.data.uetds_alerts===false);JW=wr&&!wr.error?wr.data||[]:[];
   const A=watchCalc(jr.data||[],now).filter(x=>x.lvl==2),ex={},seen=new Set();(ar.data||[]).forEach(x=>ex[x.job_id+"|"+x.kind]=x);let sent=0;
   for(const x of A){const key=x.j.id+"|"+x.k;seen.add(key);let e=ex[key];const v=VEH.find(y=>y.id==x.j.vehicle_id);
     const title=`${fM(jP(x.j))} ${TLN[x.j.job_type]||"İş"}${x.j.run_code?" · iş "+x.j.run_code:""}${v?" · "+v.plate:""}`,body=x.t+((x.res||[])[0]?"\nÖneri: "+x.res[0].txt:"");
