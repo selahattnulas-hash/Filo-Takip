@@ -78,34 +78,59 @@ function etaAfter(j,iso){const {s,e,n}=jobEnds(j);if(!s||!e)return "";const km=s
 function getPos(){return new Promise(ok=>{if(!navigator.geolocation)return ok(null);let done=false;const t=setTimeout(()=>{if(!done){done=true;ok(null)}},15000);
   navigator.geolocation.getCurrentPosition(p=>{if(done)return;done=true;clearTimeout(t);ok({lat:p.coords.latitude,lng:p.coords.longitude,acc:Math.round(p.coords.accuracy)})},()=>{if(done)return;done=true;clearTimeout(t);ok(null)},{enableHighAccuracy:true,timeout:14000,maximumAge:60000})})}
 const DSTEP=[["cikti","Yola çıktım"],["aldi","Müşteriyi aldım"],["birakti","Müşteriyi bıraktım"]];
+// ---------- şoför çevrimdışı sırası
+const QK=()=>"ft_q_"+DTOK,QI=()=>"ft_di_"+DTOK;let DOFF=false,DQT=null,DQBUSY=false;
+function qGet(){try{return JSON.parse(localStorage.getItem(QK())||"[]")}catch(e){return[]}}
+function qSet(a){try{localStorage.setItem(QK(),JSON.stringify(a));return true}catch(e){return false}}
+const isNet=e=>(typeof navigator!="undefined"&&navigator.onLine===false)||/failed to fetch|networkerror|network request|load failed|fetch failed|timeout|aborted|offline/i.test(String(e&&(e.message||e)||""));
+async function rpcTry(fn,a){try{return await sb.rpc(fn,a)}catch(x){return{error:x}}}
+async function drvCall(fn,a){const r=await rpcTry(fn,a);if(!r.error||!isNet(r.error))return r;
+  const q=qGet(),it={fn,a,at:new Date().toISOString()};q.push(it);
+  if(!qSet(q)){const b=Object.assign({},a);["p_photo","p_receipt","p_odo_photo"].forEach(k=>{if(b[k])b[k]=null});it.a=b;it.nophoto=true;if(!qSet(q))return{error:{message:"Sinyal yok ve telefonda yer yok; sinyal gelince tekrar bas"}}}
+  return{queued:true,data:null}}
+async function qFlush(){if(DQBUSY)return 0;const q=qGet();if(!q.length)return 0;DQBUSY=true;let n=0,i=0;
+  try{for(;i<q.length;i++){const it=q[i],r=await rpcTry(it.fn,it.a);if(r.error&&isNet(r.error))break;n++}
+    const rest=qGet().slice(i);qSet(rest)}finally{DQBUSY=false}return n}
+function qOverlay(){const q=qGet();if(!DI)return q.length;for(const it of q){const j=(DI.jobs||[]).find(x=>x.id==it.a.p_job);if(!j)continue;
+  if(it.fn=="drv_event"){j.events=(j.events||[]).concat([{kind:it.a.p_kind,at:it.at,pending:1}])}
+  else if(it.fn=="drv_wait"){const W=j.waits=j.waits||[],o=W.find(w=>w.kind=="bekleme"&&!w.ended_at);
+    if(it.a.p_kind=="noshow"){W.push({kind:"noshow",started_at:it.at,ended_at:it.at,pending:1});if(o)o.ended_at=it.at}
+    else if(o)o.ended_at=it.at;else W.push({kind:"bekleme",started_at:it.at,pending:1})}}return q.length}
+async function qRetry(btn){if(btn)btn.disabled=true;const n=await qFlush();DMSG=n?n+" bekleyen kayıt gönderildi":"Hâlâ sinyal yok, kayıtlar telefonda bekliyor";await driverView()}
+if(DTOK&&typeof window!="undefined")window.addEventListener("online",()=>{qFlush().then(n=>{if(n){DMSG=n+" bekleyen kayıt gönderildi";driverView()}})});
 async function driverView(){
-  const r=await sb.rpc("drv_info",{p_token:DTOK});
+  if(qGet().length)await qFlush();
+  let r=await rpcTry("drv_info",{p_token:DTOK});DOFF=false;
+  if(r.error&&isNet(r.error)){try{const c=JSON.parse(localStorage.getItem(QI())||"null");if(c){r={data:c};DOFF=true}}catch(e){}}
+  else if(r.data){try{localStorage.setItem(QI(),JSON.stringify(r.data))}catch(e){}}
   if(r.error||!r.data){$("#app").innerHTML=`<h1>Filo Takip</h1><div class="card"><p class="bad">${esc(r.error?errText(r.error):"Bağlantı açılamadı")}</p><p class="sub">Patronundan yeni bağlantı iste.</p></div>`;return}
-  DI=r.data;const J=DI.jobs||[],dm=d=>d.slice(8)+"."+d.slice(5,7);
+  DI=r.data;const QN=qOverlay(),J=DI.jobs||[],dm=d=>d.slice(8)+"."+d.slice(5,7);
   if(DDEN){denetimView();return}
   const card=j=>{const ev=j.events||[],has=k=>ev.find(e=>e.kind==k),nx=DSTEP.find(s=>!has(s[0])),st=(j.stops||[]),isT=j.job_date==DI.today,al=has("aldi");
     return `<div class="card"><h2 style="margin:0">${h5(j.pickup_time)||"saat yok"} · ${TLN[j.job_type]||"İş"}${j.job_date!=DI.today?' <span class="k">(yarın '+dm(j.job_date)+')</span>':""}</h2><p class="sub" style="margin:4px 0">${esc(j.from_city||"?")} → ${esc(j.to_city||"?")} · ${j.pax||0} kişi${j.flight_no?" · uçuş "+esc(j.flight_no)+" "+h5(j.flight_time):""}${j.run_code?" · iş kodu "+esc(j.run_code):""}${j.plate?" · "+esc(j.plate):""}</p>
     ${st.map(s=>`<div class="pl">${h5(s.pickup_time)||"–"} <b>${esc(s.place||"")}</b> <span class="k">${esc(s.region||"")} · ${s.pax||0} kişi</span>${s.note?`<br><span class="warn">${esc(s.note)}</span>`:""}</div>`).join("")}
-    ${ev.length?`<p class="sub" style="margin:6px 0 0">${ev.map(e=>(DSTEP.find(s=>s[0]==e.kind)||["",e.kind])[1]+" "+tHM(e.at)).join(" · ")}${al&&!has("birakti")&&etaAfter(j,al.at)?` · tahmini varış <b>${etaAfter(j,al.at)}</b>`:""}</p>`:""}
+    ${ev.length?`<p class="sub" style="margin:6px 0 0">${ev.map(e=>(DSTEP.find(s=>s[0]==e.kind)||["",e.kind])[1]+" "+tHM(e.at)+(e.pending?" (gönderilecek)":"")).join(" · ")}${al&&!has("birakti")&&etaAfter(j,al.at)?` · tahmini varış <b>${etaAfter(j,al.at)}</b>`:""}</p>`:""}
     ${isT&&j.status!="tamamlandi"&&(j.waits||[]).some(w=>w.kind=="noshow")?'<p class="neg">Yolcu gelmedi olarak bildirildi.</p>':isT&&j.status!="tamamlandi"?nx?`<div class="row"><button onclick="drvStep('${j.id}','${nx[0]}',this)">${nx[1]}</button></div>
     ${nx[0]=="aldi"?(w=>`<div class="row"><button class="alt" onclick="drvWait('${j.id}','bekleme',this)">${w?`Beklemeyi bitir (${Math.round((Date.now()-new Date(w.started_at))/6e4)} dk)`:"Bekliyorum"}</button><button class="alt" onclick="DSEL=DSEL&&DSEL.id=='${j.id}'&&DSEL.k=='n'?null:{id:'${j.id}',k:'n'};driverView()">Yolcu yok</button></div>`)((j.waits||[]).find(w=>w.kind=="bekleme"&&!w.ended_at)):""}
     ${DSEL&&DSEL.id==j.id&&DSEL.k=="n"?`<p class="sub">Karşılama yerinin ya da tabelanın fotoğrafını çek (kanıt). Sonra gönder.</p><input type="file" id="dnp" accept="image/*" capture="environment"><div class="row"><button style="background:#b83a2b;border-color:#b83a2b" onclick="drvWait('${j.id}','noshow',this)">Yolcu gelmedi, bildir</button></div>`:""}
     <div class="row"><button class="alt" onclick="DSEL=DSEL&&DSEL.id=='${j.id}'&&DSEL.k=='g'?null:{id:'${j.id}',k:'g'};driverView()">Gecikeceğim</button><button class="alt" onclick="DSEL=DSEL&&DSEL.id=='${j.id}'&&DSEL.k=='s'?null:{id:'${j.id}',k:'s'};driverView()">Sorun var</button></div>
     ${DSEL&&DSEL.id==j.id?DSEL.k=="g"?`<div class="row">${[10,20,30,45,60].map(m=>`<button class="alt" onclick="drvPing('${j.id}','gecikme',${m})">${m} dk</button>`).join("")}</div>`:`<label>Sorun ne?</label><input id="dsn" placeholder="ör. araç arızalandı, trafik kazası, müşteri yok"><div class="row"><button onclick="drvPing('${j.id}','sorun',null)">Gönder</button></div>`:""}`:'<p class="ok">İş bitti ✓</p>':""}</div>`};
   $("#app").innerHTML=`<h1>${esc(DI.driver||"Şoför")}</h1><p class="sub">${esc(DI.company||"")}${DI.vehicle?" · "+esc(DI.vehicle):""}</p>${DMSG?`<p class="ok">${esc(DMSG)}</p>`:""}
+  ${DOFF||QN?`<div class="card" id="dq" style="border-color:#c98a1b"><p class="warn" style="margin:0">${DOFF?"Sinyal yok: son kaydedilen bilgiler gösteriliyor. ":""}${QN?`Gönderilmeyi bekleyen ${QN} kayıt var; sinyal gelince kendiliğinden gönderilir, saatleri kaydedildi.`:""}</p>${QN?'<div class="row"><button class="alt" onclick="qRetry(this)">Şimdi gönder</button></div>':""}</div>`:""}
   <div class="row"><button style="background:#b83a2b;border-color:#b83a2b" onclick="DDEN=(activeJob()||{}).id||'-';denetimView()">DENETİM EKRANI</button></div>
   ${J.length?J.map(card).join(""):'<div class="card"><p class="sub">Bugün ve yarın sana atanmış iş yok.</p></div>'}
   <div class="card"><h2>Yakıt aldım</h2>${DI.vehicle?`<p class="sub">${esc(DI.vehicle)} için. Fişin ve km saatinin fotoğrafını çek.</p><div class="f2"><div><label>Litre</label><input id="yl" inputmode="decimal"></div><div><label>Tutar (₺)</label><input id="ya" inputmode="decimal"></div><div><label>Km saati</label><input id="yo" inputmode="numeric"></div></div>
   <label>Fiş fotoğrafı</label><input type="file" id="yf" accept="image/*" capture="environment"><label>Km saati fotoğrafı</label><input type="file" id="yk" accept="image/*" capture="environment"><div class="row"><button onclick="drvFuel(this)">Yakıtı gönder</button></div><p id="ym" class="sub" role="status"></p>`:'<p class="sub">Sana tanımlı araç yok, patronuna söyle.</p>'}</div>
   <div class="row"><button class="alt" onclick="DMSG='';driverView()">Yenile</button></div><p class="sub">Konumun düğmelere bastığında ve bu sayfa ekranda açıkken 3 dakikada bir alınır; sayfa kapalıyken alınmaz.</p>`;
   if(!DPT){DPT=setInterval(autoPing,180000);autoPing()}
+  if(!DQT)DQT=setInterval(()=>{if(qGet().length)qFlush().then(n=>{if(n&&!DDEN&&!DSEL){DMSG=n+" bekleyen kayıt gönderildi";driverView()}})},30000);
 }
 async function drvWait(id,kind,btn){if(btn)btn.disabled=true;let ph=null;try{if(kind=="noshow"){const f=$("#dnp")&&$("#dnp").files[0];if(!f&&!confirm("Fotoğrafsız bildirilsin mi? Kanıt için fotoğraf önerilir.")){if(btn)btn.disabled=false;return}ph=f?await shrink(f):null}}catch(e){}
-  const p=await getPos(),r=await sb.rpc("drv_wait",{p_token:DTOK,p_job:id,p_kind:kind,p_lat:p&&p.lat,p_lng:p&&p.lng,p_photo:ph});if(r.error){alert(errText(r.error));if(btn)btn.disabled=false;return}
-  DSEL=null;DMSG=r.data=="basladi"?"Bekleme başladı; bitince Beklemeyi bitir'e bas":r.data=="bitti"?"Bekleme bitti, kaydedildi":"Yolcu gelmedi olarak bildirildi; operasyon haberdar edildi";await driverView()}
+  const p=await getPos(),r=await drvCall("drv_wait",{p_token:DTOK,p_job:id,p_kind:kind,p_lat:p&&p.lat,p_lng:p&&p.lng,p_photo:ph});if(r.error){alert(errText(r.error));if(btn)btn.disabled=false;return}
+  DSEL=null;DMSG=r.queued?"Sinyal yok: kaydedildi, sinyal gelince gönderilecek":r.data=="basladi"?"Bekleme başladı; bitince Beklemeyi bitir'e bas":r.data=="bitti"?"Bekleme bitti, kaydedildi":"Yolcu gelmedi olarak bildirildi; operasyon haberdar edildi";await driverView()}
 async function drvPing(id,kind,m){const note=kind=="sorun"?($("#dsn")||{}).value||"":null;if(kind=="sorun"&&!note.trim()){alert("Kısaca sorunu yaz.");return}
-  const p=await getPos(),r=await sb.rpc("drv_ping",{p_token:DTOK,p_job:id,p_kind:kind,p_min:m,p_note:note,p_lat:p&&p.lat,p_lng:p&&p.lng,p_acc:p&&p.acc});
-  if(r.error){alert(errText(r.error));return}DSEL=null;DMSG=kind=="gecikme"?m+" dk gecikme bildirildi; operasyon haberdar edildi":"Sorun bildirildi; operasyon haberdar edildi, gerekirse seni arayacak";await driverView()}
+  const p=await getPos(),r=await drvCall("drv_ping",{p_token:DTOK,p_job:id,p_kind:kind,p_min:m,p_note:note,p_lat:p&&p.lat,p_lng:p&&p.lng,p_acc:p&&p.acc});
+  if(r.error){alert(errText(r.error));return}DSEL=null;DMSG=r.queued?"Sinyal yok: bildirimin kaydedildi, sinyal gelince gönderilecek. Acilse patronunu ara.":kind=="gecikme"?m+" dk gecikme bildirildi; operasyon haberdar edildi":"Sorun bildirildi; operasyon haberdar edildi, gerekirse seni arayacak";await driverView()}
 function denetimView(){
   const J=(DI.jobs||[]).filter(j=>j.job_date==DI.today),j=J.find(x=>x.id==DDEN)||J[0]||null,f=DI.firm||{},dmy=d=>d?d.slice(8,10)+"."+d.slice(5,7)+"."+d.slice(0,4):"",row=(k,v)=>v?`<div style="display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line,#2a3340);padding:8px 0"><span class="k">${k}</span><b style="text-align:right">${esc(String(v))}</b></div>`:"";
   const people=j?(j.stops||[]).flatMap(s=>(s.people||[]).map(n=>({n,p:s.place}))):[],today=DI.today;
@@ -122,9 +147,9 @@ async function autoPing(){try{if(document.hidden)return;let ok=DGR;if(!ok&&navig
   const p=await getPos();if(!p)return;const j=activeJob();await sb.rpc("drv_ping",{p_token:DTOK,p_job:j?j.id:null,p_kind:"konum",p_min:null,p_note:null,p_lat:p.lat,p_lng:p.lng,p_acc:p.acc})}catch(e){}}
 async function drvStep(id,kind,btn){
   if(btn){btn.disabled=true;btn.textContent="Konum alınıyor…"}
-  const p=await getPos();if(p)DGR=true;const r=await sb.rpc("drv_event",{p_token:DTOK,p_job:id,p_kind:kind,p_lat:p&&p.lat,p_lng:p&&p.lng,p_acc:p&&p.acc});
+  const p=await getPos();if(p)DGR=true;const r=await drvCall("drv_event",{p_token:DTOK,p_job:id,p_kind:kind,p_lat:p&&p.lat,p_lng:p&&p.lng,p_acc:p&&p.acc});
   if(r.error){alert(errText(r.error));if(btn){btn.disabled=false;btn.textContent=(DSTEP.find(s=>s[0]==kind)||[])[1]||"Tekrar dene"}return}
-  DMSG=(DSTEP.find(s=>s[0]==kind)||["",""])[1]+" kaydedildi"+(p?"":" (konum alınamadı, telefonun konum iznini kontrol et)");await driverView();
+  DMSG=(DSTEP.find(s=>s[0]==kind)||["",""])[1]+(r.queued?" telefona kaydedildi, sinyal gelince gönderilecek":" kaydedildi")+(p?"":" (konum alınamadı, telefonun konum iznini kontrol et)");await driverView();
 }
 function shrink(file){return new Promise((ok,no)=>{if(!file)return ok(null);const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{const s=Math.min(1,1100/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);ok(c.toDataURL("image/jpeg",0.6))};im.onerror=()=>no(new Error("Fotoğraf okunamadı"));im.src=u})}
 async function drvFuel(btn){
@@ -133,8 +158,8 @@ async function drvFuel(btn){
   if(!$("#yf").files[0]){e.textContent="Fişin fotoğrafını çek.";e.className="sub bad";return}
   btn.disabled=true;e.textContent="Gönderiliyor…";e.className="sub ok";
   try{const [f,k]=await Promise.all([shrink($("#yf").files[0]),shrink($("#yk").files[0])]);
-    const r=await sb.rpc("drv_fuel",{p_token:DTOK,p_liters:l,p_amount:a,p_odo:Math.round(o),p_receipt:f,p_odo_photo:k});if(r.error)throw r.error;
-    DMSG="Yakıt kaydedildi, teşekkürler";await driverView()}catch(x){e.textContent=errText(x);e.className="sub bad";btn.disabled=false}
+    const r=await drvCall("drv_fuel",{p_token:DTOK,p_liters:l,p_amount:a,p_odo:Math.round(o),p_receipt:f,p_odo_photo:k});if(r.error)throw r.error;
+    DMSG=r.queued?"Sinyal yok: yakıt telefona kaydedildi, sinyal gelince gönderilecek":"Yakıt kaydedildi, teşekkürler";await driverView()}catch(x){e.textContent=errText(x);e.className="sub bad";btn.disabled=false}
 }
 async function boot(){
   const r=await sb.auth.getSession();
