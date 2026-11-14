@@ -218,10 +218,10 @@ async function vehiclesView(t){
   const g=++GEN,sy=(!t||t===TAB)&&typeof scrollY=="number"?scrollY:0;
   if(t&&t!==TAB&&$("#tab"))$("#tab").innerHTML='<p class="sub">Yükleniyor…</p>';
   TAB=t||TAB;if(ROLE!="owner"&&"ctp".includes(TAB))TAB="o";try{history.replaceState(null,"","#"+TAB)}catch(e){}
-  const [r,dr,ag]=await Promise.all([sb.from("vehicles").select("*").eq("company_id",co.id).order("plate"),sb.from("drivers").select("*").eq("company_id",co.id).order("name"),sb.from("agencies").select("id,name,noshow_pct,wait_free_min,wait_per_min").eq("company_id",co.id).order("name")]);
+  const [r,dr,ag]=await Promise.all([sb.from("vehicles").select(VCOLS).eq("company_id",co.id).order("plate"),sb.from("drivers").select("*").eq("company_id",co.id).order("name"),sb.from("agencies").select("id,name,noshow_pct,wait_free_min,wait_per_min").eq("company_id",co.id).order("name")]);
   if(g!==GEN)return;
   if(r.error||dr.error||ag.error){$("#app").innerHTML=`<p class="bad">${esc(errText(r.error||dr.error||ag.error))}</p><button class="alt" onclick="vehiclesView()">Tekrar dene</button>`;return}
-  VEH=r.data||[];try{const fq=await sb.from("fuel_logs").select("vehicle_id,liters,odometer_km").eq("company_id",co.id).not("odometer_km","is",null).order("log_date",{ascending:false}).limit(400);LREAL=fq.error?{}:realCons(fq.data)}catch(e){LREAL={}}DRV=dr.data||[];AGN=ag.data||[];
+  VEH=r.data||[];if(ROLE=="owner"){const vm=await sb.from("veh_money").select("id,monthly_fixed_cost").eq("company_id",co.id);if(!vm.error)(vm.data||[]).forEach(x=>{const v=VEH.find(y=>y.id==x.id);if(v)v.monthly_fixed_cost=x.monthly_fixed_cost})}try{const fq=await sb.from("fuel_logs").select("vehicle_id,liters,odometer_km").eq("company_id",co.id).not("odometer_km","is",null).order("log_date",{ascending:false}).limit(400);LREAL=fq.error?{}:realCons(fq.data)}catch(e){LREAL={}}DRV=dr.data||[];AGN=ag.data||[];
   $("#app").innerHTML=`<div class="top"><div><h1>${esc(co.name)}</h1><p class="sub">${esc(user.email)}</p></div><button class="alt" onclick="logout()">Çıkış</button></div>
   <div class="tabs" id="mt">${[["o","Plan"],["j","İşler"],["s","Şoförler"],["c","Cari"],["t","Maliyet"],["v","Araçlar"],["p","Panel"]].filter(x=>ROLE=="owner"||!"ctp".includes(x[0])).map(x=>`<button class="${TAB==x[0]?"":"alt"}" onclick="vehiclesView('${x[0]}')">${x[1]}</button>`).join("")}</div><div id="tab"></div>`;
   await ({o:planTab,p:panelTab,j:jobTab,s:drvTab,c:cariTab,t:costTab,v:vehTab})[TAB]();
@@ -240,7 +240,7 @@ async function panelTab(){
   const g0=GEN;PT=PT||today();PF=PF||today(new Date(Date.now()-29*864e5));if(PF>PT)PF=PT;const nd=dayDiff(PF,PT)+1;
   const [jr,fr,er,tr,ar,kr]=await Promise.all([
     sb.from("job_money").select("vehicle_id,amount,currency,partner_share,job_date").eq("company_id",co.id).eq("status","tamamlandi").not("vehicle_id","is",null).gte("job_date",PF).lte("job_date",PT).limit(5000),
-    sb.from("fuel_logs").select("vehicle_id,log_date,liters,amount,odometer_km").eq("company_id",co.id).gte("log_date",PF).lte("log_date",PT).order("log_date").limit(5000),
+    sb.from("fuel_money").select("vehicle_id,log_date,liters,amount,odometer_km").eq("company_id",co.id).gte("log_date",PF).lte("log_date",PT).order("log_date").limit(5000),
     sb.from("expenses").select("vehicle_id,amount,period,start_date,end_date").eq("company_id",co.id).limit(2000),
     sb.from("trips").select("vehicle_id,revenue,fuel_cost,other_cost,km,fuel_liters,trip_date").eq("company_id",co.id).gte("trip_date",PF).lte("trip_date",PT).limit(5000),
     sb.from("jobs").select("vehicle_id,job_date,pickup_time,job_type,from_city,to_city,job_stops(seq,region,place)").eq("company_id",co.id).not("vehicle_id","is",null).gte("job_date",PF).lte("job_date",PT).limit(5000),
@@ -271,7 +271,7 @@ async function agencyPanel(g0){
 }
 const ECAT=["Personel","Sigorta","Bakım ve onarım","Kredi ya da kiralama","Lastik","Vergi ve harç","Ofis","Diğer"],EPER={aylik:"aylık",gunluk:"günlük",tek_sefer:"tek sefer"};
 async function costTab(){
-  const g0=GEN,[fr,er]=await Promise.all([sb.from("fuel_logs").select("id,vehicle_id,log_date,liters,amount,odometer_km,source,driver_id").eq("company_id",co.id).order("log_date",{ascending:false}).limit(80),sb.from("expenses").select("id,vehicle_id,category,description,amount,period,start_date").eq("company_id",co.id).order("start_date",{ascending:false}).limit(100)]);
+  const g0=GEN,[fr,er]=await Promise.all([sb.from("fuel_money").select("id,vehicle_id,log_date,liters,amount,odometer_km,source,driver_id").eq("company_id",co.id).order("log_date",{ascending:false}).limit(80),sb.from("expenses").select("id,vehicle_id,category,description,amount,period,start_date").eq("company_id",co.id).order("start_date",{ascending:false}).limit(100)]);
   if(g0!==GEN||!need(fr,er))return;
   const pv={};VEH.forEach(v=>pv[v.id]=v.plate);const F=fr.data||[],E=er.data||[],l100={};
   VEH.forEach(v=>{const a=F.filter(x=>x.vehicle_id==v.id&&x.odometer_km).sort((p,q)=>p.odometer_km-q.odometer_km);for(let i=1;i<a.length;i++){const d=a[i].odometer_km-a[i-1].odometer_km;if(d>0)l100[a[i].id]=a[i].liters/d*100}});
@@ -553,6 +553,7 @@ async function applyRescue(jid,wid,kid,uid){
   const w=VEH.find(x=>x.id==wid),u=VEH.find(x=>x.id==uid);if(!confirm(uid?`İş ${w.plate} aracına, bu aracın sonraki işi ${u.plate} aracına verilsin mi? Şoförlere yeni işlerini göndermeyi unutma.`:`İş ${w.plate} aracına verilsin mi? Şoföre yeni işini göndermeyi unutma.`))return;
   const up=async(id,v)=>{const x={vehicle_id:v.id,driver_id:v.default_driver_id||null};const r=await sb.from("jobs").update(x).eq("id",id);if(r.error)throw r.error};
   try{if(kid&&u)await up(kid,u);await up(jid,w);say((w.default_driver_id&&(!u||u.default_driver_id))?"Araç ve şoför değiştirildi. Şoföre yeni işini gönder.":"Araç değiştirildi; sabit şoförü olmayan araç için şoförü İşler sekmesinden seç.");await vehiclesView();watchTick()}catch(e){alert(errText(e))}}
+const VCOLS="id,company_id,plate,base_consumption,home_city,odometer_km,next_service_km,active,created_at,default_driver_id,capacity,vehicle_class,model_year";
 const JCOLS="id,company_id,job_date,from_city,to_city,agency_id,vehicle_id,distance_km,status,source,notes,created_at,pickup_time,job_type,vehicle_type,driver_id,guest_name,pax,currency,collection_mode,invoiced,partner_agency_id,collected_at,flight_no,flight_time,run_code,guide_name,import_key,end_time,price_set_by,price_set_email,price_set_at,service_mode,eta_landing,uetds_status,uetds_ref,uetds_at";
 async function addMoney(rows){if(!rows||!rows.length)return rows;const ids=rows.map(x=>x.id),M={};
   for(let i=0;i<ids.length;i+=150){const r=await sb.from("job_money").select("id,priced,amount,partner_share,collected_amount").in("id",ids.slice(i,i+150));if(!r.error)(r.data||[]).forEach(x=>M[x.id]=x)}
@@ -910,7 +911,7 @@ let PD="";
 function planDay(d){const x=new Date((PD||today())+"T12:00:00Z");x.setUTCDate(x.getUTCDate()+d);PD=x.toISOString().slice(0,10);vehiclesView("o")}
 async function planTab(){
   const g0=GEN;PD=PD||today();
-  const [r,fl,dc]=await Promise.all([sb.from("jobs").select("id,job_date,pickup_time,end_time,job_type,from_city,to_city,pax,status,vehicle_id,driver_id,vehicle_type,run_code,flight_no,flight_time,eta_landing,uetds_status,job_stops(seq,place,region,pickup_time,pax)").eq("company_id",co.id).eq("job_date",PD).order("pickup_time"),sb.from("fuel_logs").select("liters,amount").eq("company_id",co.id).order("log_date",{ascending:false}).limit(30),sb.from("documents").select("vehicle_id,doc_type,due_date").eq("company_id",co.id).lte("due_date",today(new Date(Date.now()+30*864e5))),loadRD()]);
+  const [r,fl,dc]=await Promise.all([sb.from("jobs").select("id,job_date,pickup_time,end_time,job_type,from_city,to_city,pax,status,vehicle_id,driver_id,vehicle_type,run_code,flight_no,flight_time,eta_landing,uetds_status,job_stops(seq,place,region,pickup_time,pax)").eq("company_id",co.id).eq("job_date",PD).order("pickup_time"),sb.from("fuel_money").select("liters,amount").eq("company_id",co.id).order("log_date",{ascending:false}).limit(30),sb.from("documents").select("vehicle_id,doc_type,due_date").eq("company_id",co.id).lte("due_date",today(new Date(Date.now()+30*864e5))),loadRD()]);
   const FP=fuelPrice(fl&&fl.data);
   if(g0!==GEN||!need(r))return;await loadEV();if(g0!==GEN)return;
   const mn=t=>{const a=String(t).split(":");return a[0]*60+ +a[1]},dn={};DRV.forEach(x=>dn[x.id]=x.name);
@@ -1151,7 +1152,7 @@ function priceFor(j){
   return best||{miss:why||"fiyat bulunamadı"};
 }
 async function priceView(){
-  const [r,fq]=await Promise.all([sb.from("price_items").select("*").eq("company_id",co.id),sb.from("fuel_logs").select("log_date,liters,amount").eq("company_id",co.id).order("log_date").limit(5000)]),e=$("#pr");if(!e||r.error)return;PI=r.data||[];
+  const [r,fq]=await Promise.all([sb.from("price_items").select("*").eq("company_id",co.id),sb.from("fuel_money").select("log_date,liters,amount").eq("company_id",co.id).order("log_date").limit(5000)]),e=$("#pr");if(!e||r.error)return;PI=r.data||[];
   const FL=fq.error?[]:(fq.data||[]).filter(x=>Number(x.liters)>0&&Number(x.amount)>0),avg=a=>{const l=a.reduce((s,x)=>s+Number(x.liters),0);return l?a.reduce((s,x)=>s+Number(x.amount),0)/l:null},addD=(d,n)=>today(new Date(new Date(d+"T12:00:00Z").getTime()+n*864e5));
   const fuelUp=vf=>{if(!vf||FL.length<2)return "";const b=FL.filter(x=>x.log_date>=addD(vf,-15)&&x.log_date<=addD(vf,15)),last=FL[FL.length-1].log_date,n=FL.filter(x=>x.log_date>addD(last,-30));const a0=avg(b.length?b:FL.filter(x=>x.log_date>=vf).slice(0,5)),a1=avg(n);if(!a0||!a1||n[0].log_date<=(b.length?b[b.length-1].log_date:vf))return "";
     const pc=(a1/a0-1)*100;return `<p class="sub ${pc>10?"warn":""}" style="margin:0">Mazot: sezon başı ${a0.toFixed(2)} ₺/L → son 30 gün ${a1.toFixed(2)} ₺/L (${pc>=0?"+":""}${pc.toFixed(1)}%)${pc>10?". Sözleşmende mazot artış maddesi varsa fiyat güncellemesi isteyebilirsin.":""}</p>`};
@@ -1245,8 +1246,8 @@ async function saveFirm(){const up={name:$("#cf_n").value.trim()||co.name,d2_no:
 async function setYear(vid,val){const n=String(val).trim()===""?null:num(val),y=new Date().getFullYear();if(n!==null&&(n<1980||n>y+1)){alert("Geçerli bir model yılı yaz (ör. 2019).");return}
   const r=await sb.from("vehicles").update({model_year:n}).eq("id",vid);if(r.error){alert(errText(r.error));return}await vehiclesView("v")}
 async function backupAll(){
-  const T=["vehicles","drivers","agencies","jobs","job_stops","job_passengers","price_items","fuel_logs","expenses","vehicle_km","documents","ledger_entries","region_durations","job_audit_log","company_members"],out={uygulama:"Filo Takip",firma:co.name,tarih:new Date().toISOString(),tablolar:{}};
-  try{for(const t of T){const rows=[];for(let i=0;i<200000;i+=1000){const r=await (t=="job_stops"||t=="job_passengers"?sb.from(t).select("*").range(i,i+999):sb.from(t).select("*").eq("company_id",co.id).range(i,i+999));if(r.error){if(i==0){out.tablolar[t]={hata:errText(r.error)};break}throw r.error}rows.push(...(r.data||[]));if((r.data||[]).length<1000)break}
+  const SELC={jobs:JCOLS,vehicles:VCOLS,fuel_logs:"id,company_id,vehicle_id,log_date,liters,odometer_km,created_at,ext_ref,product,driver_id,source"},T=["vehicles","veh_money","drivers","agencies","jobs","job_money","job_stops","job_passengers","price_items","fuel_logs","fuel_money","expenses","vehicle_km","documents","ledger_entries","region_durations","job_audit_log","company_members"],out={uygulama:"Filo Takip",firma:co.name,tarih:new Date().toISOString(),tablolar:{}};
+  try{for(const t of T){const rows=[];for(let i=0;i<200000;i+=1000){const r=await (t=="job_stops"||t=="job_passengers"?sb.from(t).select("*").range(i,i+999):sb.from(t).select(SELC[t]||"*").eq("company_id",co.id).range(i,i+999));if(r.error){if(i==0){out.tablolar[t]={hata:errText(r.error)};break}throw r.error}rows.push(...(r.data||[]));if((r.data||[]).length<1000)break}
     if(!out.tablolar[t])out.tablolar[t]=rows}}catch(e){say("Yedek alınamadı: "+errText(e),true);return}
   const n=Object.values(out.tablolar).reduce((s,x)=>s+(Array.isArray(x)?x.length:0),0),a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,1)],{type:"application/json"}));a.download="filo-takip-yedek-"+today()+".json";document.body.appendChild(a);a.click();a.remove();
   say(n+" kayıt yedeklendi. Dosyayı Drive'a ya da e-postana kaydet");
