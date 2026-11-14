@@ -69,7 +69,7 @@ const REC=typeof location!="undefined"&&/type=recovery/.test(location.hash);
 const INV=(()=>{try{const m=location.search.match(/[?&]davet=([A-Za-z0-9]{8})/);if(m){localStorage.setItem("ft_invite",m[1].toUpperCase());history.replaceState(null,"",location.pathname+location.hash)}return localStorage.getItem("ft_invite")||""}catch(e){return ""}})();
 
 const DTOK=(()=>{const m=location.search.match(/[?&]sofor=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);return m?m[1].toLowerCase():""})();
-let DI=null,DMSG="",DSEL=null,DPT=null,DGR=false;
+let DI=null,DMSG="",DSEL=null,DPT=null,DGR=false,DDEN=null;
 function nearGeo(lat,lng){let b=null,bd=1e9;for(const k in GEO){const [a,c]=GEO[k],d=(a-lat)**2+((c-lng)*Math.cos(lat*Math.PI/180))**2;if(d<bd){bd=d;b=k}}return b?{k:b,c:GEO[b],km:Math.round(Math.sqrt(bd)*111)}:null}
 const tHM=iso=>new Date(iso).toLocaleTimeString("tr-TR",{timeZone:"Europe/Istanbul",hour:"2-digit",minute:"2-digit"});
 function jobEnds(j){const st=(j.job_stops||j.stops||[]).slice().sort((a,b)=>a.seq-b.seq),f=st[0],l=st[st.length-1];
@@ -82,6 +82,7 @@ async function driverView(){
   const r=await sb.rpc("drv_info",{p_token:DTOK});
   if(r.error||!r.data){$("#app").innerHTML=`<h1>Filo Takip</h1><div class="card"><p class="bad">${esc(r.error?errText(r.error):"Bağlantı açılamadı")}</p><p class="sub">Patronundan yeni bağlantı iste.</p></div>`;return}
   DI=r.data;const J=DI.jobs||[],dm=d=>d.slice(8)+"."+d.slice(5,7);
+  if(DDEN){denetimView();return}
   const card=j=>{const ev=j.events||[],has=k=>ev.find(e=>e.kind==k),nx=DSTEP.find(s=>!has(s[0])),st=(j.stops||[]),isT=j.job_date==DI.today,al=has("aldi");
     return `<div class="card"><h2 style="margin:0">${h5(j.pickup_time)||"saat yok"} · ${TLN[j.job_type]||"İş"}${j.job_date!=DI.today?' <span class="k">(yarın '+dm(j.job_date)+')</span>':""}</h2><p class="sub" style="margin:4px 0">${esc(j.from_city||"?")} → ${esc(j.to_city||"?")} · ${j.pax||0} kişi${j.flight_no?" · uçuş "+esc(j.flight_no)+" "+h5(j.flight_time):""}${j.run_code?" · iş kodu "+esc(j.run_code):""}${j.plate?" · "+esc(j.plate):""}</p>
     ${st.map(s=>`<div class="pl">${h5(s.pickup_time)||"–"} <b>${esc(s.place||"")}</b> <span class="k">${esc(s.region||"")} · ${s.pax||0} kişi</span>${s.note?`<br><span class="warn">${esc(s.note)}</span>`:""}</div>`).join("")}
@@ -90,6 +91,7 @@ async function driverView(){
     <div class="row"><button class="alt" onclick="DSEL=DSEL&&DSEL.id=='${j.id}'&&DSEL.k=='g'?null:{id:'${j.id}',k:'g'};driverView()">Gecikeceğim</button><button class="alt" onclick="DSEL=DSEL&&DSEL.id=='${j.id}'&&DSEL.k=='s'?null:{id:'${j.id}',k:'s'};driverView()">Sorun var</button></div>
     ${DSEL&&DSEL.id==j.id?DSEL.k=="g"?`<div class="row">${[10,20,30,45,60].map(m=>`<button class="alt" onclick="drvPing('${j.id}','gecikme',${m})">${m} dk</button>`).join("")}</div>`:`<label>Sorun ne?</label><input id="dsn" placeholder="ör. araç arızalandı, trafik kazası, müşteri yok"><div class="row"><button onclick="drvPing('${j.id}','sorun',null)">Gönder</button></div>`:""}`:'<p class="ok">İş bitti ✓</p>':""}</div>`};
   $("#app").innerHTML=`<h1>${esc(DI.driver||"Şoför")}</h1><p class="sub">${esc(DI.company||"")}${DI.vehicle?" · "+esc(DI.vehicle):""}</p>${DMSG?`<p class="ok">${esc(DMSG)}</p>`:""}
+  <div class="row"><button style="background:#b83a2b;border-color:#b83a2b" onclick="DDEN=(activeJob()||{}).id||'-';denetimView()">DENETİM EKRANI</button></div>
   ${J.length?J.map(card).join(""):'<div class="card"><p class="sub">Bugün ve yarın sana atanmış iş yok.</p></div>'}
   <div class="card"><h2>Yakıt aldım</h2>${DI.vehicle?`<p class="sub">${esc(DI.vehicle)} için. Fişin ve km saatinin fotoğrafını çek.</p><div class="f2"><div><label>Litre</label><input id="yl" inputmode="decimal"></div><div><label>Tutar (₺)</label><input id="ya" inputmode="decimal"></div><div><label>Km saati</label><input id="yo" inputmode="numeric"></div></div>
   <label>Fiş fotoğrafı</label><input type="file" id="yf" accept="image/*" capture="environment"><label>Km saati fotoğrafı</label><input type="file" id="yk" accept="image/*" capture="environment"><div class="row"><button onclick="drvFuel(this)">Yakıtı gönder</button></div><p id="ym" class="sub" role="status"></p>`:'<p class="sub">Sana tanımlı araç yok, patronuna söyle.</p>'}</div>
@@ -99,6 +101,17 @@ async function driverView(){
 async function drvPing(id,kind,m){const note=kind=="sorun"?($("#dsn")||{}).value||"":null;if(kind=="sorun"&&!note.trim()){alert("Kısaca sorunu yaz.");return}
   const p=await getPos(),r=await sb.rpc("drv_ping",{p_token:DTOK,p_job:id,p_kind:kind,p_min:m,p_note:note,p_lat:p&&p.lat,p_lng:p&&p.lng,p_acc:p&&p.acc});
   if(r.error){alert(errText(r.error));return}DSEL=null;DMSG=kind=="gecikme"?m+" dk gecikme bildirildi; operasyon haberdar edildi":"Sorun bildirildi; operasyon haberdar edildi, gerekirse seni arayacak";await driverView()}
+function denetimView(){
+  const J=(DI.jobs||[]).filter(j=>j.job_date==DI.today),j=J.find(x=>x.id==DDEN)||J[0]||null,f=DI.firm||{},dmy=d=>d?d.slice(8,10)+"."+d.slice(5,7)+"."+d.slice(0,4):"",row=(k,v)=>v?`<div style="display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line,#2a3340);padding:8px 0"><span class="k">${k}</span><b style="text-align:right">${esc(String(v))}</b></div>`:"";
+  const people=j?(j.stops||[]).flatMap(s=>(s.people||[]).map(n=>({n,p:s.place}))):[],today=DI.today;
+  $("#app").innerHTML=`<div class="card" style="font-size:18px"><h1 style="margin:0 0 4px">Tarifesiz yolcu taşıma</h1><p class="sub" style="margin:0 0 8px">Sefer bilgileri · ${dmy(today)}</p>
+  ${row("Taşımacı",f.name)}${row("D2 yetki belgesi no",f.d2)}${row("Vergi no",f.tax)}${row("Telefon",f.phone)}${row("Adres",f.address)}
+  ${row("Araç",j&&j.plate||DI.vehicle)}${row("Şoför",DI.driver)}
+  ${j?row("Sefer",(h5(j.pickup_time)||"")+" · "+(TLN[j.job_type]||""))+row("Güzergah",(j.from_city||"?")+" → "+(j.to_city||"?"))+row("Yolcu sayısı",j.pax||people.length||"")+row("Uçuş",j.flight_no?(j.flight_no+" "+h5(j.flight_time)):"")+row("U-ETDS",j.uetds_status=="bildirildi"?("bildirildi"+(j.uetds_ref?" · "+j.uetds_ref:"")):"bildirim kaydı yok"):'<p class="sub">Bugün için iş yok.</p>'}
+  ${people.length?`<h2 style="margin:14px 0 4px">Yolcu listesi (${people.length})</h2><ol style="margin:0;padding-left:22px">${people.map(x=>`<li>${esc(x.n)}${x.p?` <span class="k">· ${esc(x.p)}</span>`:""}</li>`).join("")}</ol>`:""}
+  ${(DI.docs||[]).length?`<h2 style="margin:14px 0 4px">Araç belgeleri</h2>${DI.docs.map(d=>row(d.plate+" · "+d.type,dmy(d.due)+(d.due<today?" (süresi dolmuş)":" (geçerli)"))).join("")}`:""}
+  </div>${J.length>1?`<div class="row">${J.map(x=>`<button class="alt" onclick="DDEN='${x.id}';denetimView()">${h5(x.pickup_time)||"?"} ${esc((x.to_city||"").slice(0,14))}</button>`).join("")}</div>`:""}<div class="row"><button class="alt" onclick="DDEN=null;driverView()">Geri</button></div>`;
+  window.scrollTo(0,0)}
 function activeJob(){const J=(DI&&DI.jobs||[]).filter(j=>j.job_date==DI.today&&j.status!="tamamlandi"),go=J.find(j=>(j.events||[]).some(e=>e.kind=="cikti"||e.kind=="aldi")&&!(j.events||[]).some(e=>e.kind=="birakti"));return go||J.find(j=>!(j.events||[]).some(e=>e.kind=="birakti"))||null}
 async function autoPing(){try{if(document.hidden)return;let ok=DGR;if(!ok&&navigator.permissions&&navigator.permissions.query){const s=await navigator.permissions.query({name:"geolocation"});ok=s.state=="granted"}if(!ok)return;
   const p=await getPos();if(!p)return;const j=activeJob();await sb.rpc("drv_ping",{p_token:DTOK,p_job:j?j.id:null,p_kind:"konum",p_min:null,p_note:null,p_lat:p.lat,p_lng:p.lng,p_acc:p.acc})}catch(e){}}
@@ -151,10 +164,10 @@ async function logout(){await sb.auth.signOut();user=null;co=null;authView()}
 
 setInterval(()=>{try{if(co&&co.id&&!document.hidden)watchTick()}catch(e){}},60000);
 async function home(){
-  const r=await sb.from("company_members").select("company_id, role, companies(name,uetds_alerts)").order("created_at").limit(1);
+  const r=await sb.from("company_members").select("company_id, role, companies(name,uetds_alerts,d2_no,tax_no,phone,address)").order("created_at").limit(1);
   if(r.error){$("#app").innerHTML=`<p class="bad">Veri okunamadı: ${esc(r.error.message)}</p>`;return}
   if(!r.data.length){companyView();return}
-  ROLE=r.data[0].role;co={id:r.data[0].company_id,name:r.data[0].companies?r.data[0].companies.name:"",uetds:!(r.data[0].companies&&r.data[0].companies.uetds_alerts===false)};UETDS_ON=co.uetds;
+  ROLE=r.data[0].role;co={id:r.data[0].company_id,name:r.data[0].companies?r.data[0].companies.name:"",uetds:!(r.data[0].companies&&r.data[0].companies.uetds_alerts===false)};UETDS_ON=co.uetds;{const c=r.data[0].companies||{};co.d2=c.d2_no;co.tax=c.tax_no;co.phone=c.phone;co.address=c.address}
   try{if(window.Notification&&Notification.permission=="granted")pushOn(false)}catch(e){}
   await vehiclesView();
 }
@@ -412,7 +425,7 @@ async function vehTab(){
   <label>Plaka</label><input id="pl" placeholder="48 ABC 123" autocapitalize="characters">
   <div class="f2"><div>${ROLE=="owner"?'<label>Aylık sabit gider (₺)</label><input id="fx" inputmode="decimal" placeholder="sigorta, kredi, bakım payı">':'<input id="fx" type="hidden" value="">'}</div><div><label>Ort. tüketim (L/100 km)</label><input id="bc" inputmode="decimal"></div>
   <div><label>Bulunduğu şehir</label><input id="hc" placeholder="Bodrum"></div><div><label>Yolcu kapasitesi</label><input id="cp" inputmode="numeric" placeholder="16"></div><div><label>Km saati</label><input id="od" inputmode="numeric"></div></div>
-  <div class="row"><button onclick="addVeh()">Aracı kaydet</button></div><p id="msg" class="sub" role="status"></p></div><div id="docs"></div><div id="team"></div>${ROLE=="owner"?`<div class="card"><h2>Veri yedeği</h2><p class="sub">Firmanın bütün kayıtlarını (araçlar, işler, yolcular, fiyatlar, yakıt, cari) tek dosya olarak indirir. Ayda bir indirip Drive'a ya da e-postana koyman yeterli.</p><div class="row"><button class="alt" onclick="backupAll()">Tüm verileri indir</button></div></div>`:""}`;
+  <div class="row"><button onclick="addVeh()">Aracı kaydet</button></div><p id="msg" class="sub" role="status"></p></div><div id="docs"></div><div id="team"></div>${ROLE=="owner"?`<div class="card"><h2>Firma bilgileri</h2><p class="sub">Şoförün denetim ekranında görünür (yol kontrolünde taşıma bilgileri).</p><div class="f2"><div><label>Firma unvanı</label><input id="cf_n" value="${esc(co.name||"")}"></div><div><label>D2 yetki belgesi no</label><input id="cf_d2" value="${esc(co.d2||"")}"></div><div><label>Vergi no</label><input id="cf_tx" inputmode="numeric" value="${esc(co.tax||"")}"></div><div><label>Telefon</label><input id="cf_ph" inputmode="tel" value="${esc(co.phone||"")}"></div></div><label>Adres</label><input id="cf_ad" value="${esc(co.address||"")}"><div class="row"><button onclick="saveFirm()">Kaydet</button></div></div>`:""}${ROLE=="owner"?`<div class="card"><h2>Veri yedeği</h2><p class="sub">Firmanın bütün kayıtlarını (araçlar, işler, yolcular, fiyatlar, yakıt, cari) tek dosya olarak indirir. Ayda bir indirip Drive'a ya da e-postana koyman yeterli.</p><div class="row"><button class="alt" onclick="backupAll()">Tüm verileri indir</button></div></div>`:""}`;
   docsView();if(ROLE=="owner")teamView();
 }
 const CUR={TRY:"₺",EUR:"€",USD:"$",GBP:"£"},CM={sofor_nakit:"Şoför nakit",acenta_cari:"Acenta cari",ofis:"Ofiste",kart:"Kart"};
@@ -1192,6 +1205,8 @@ async function delDoc(id){if(!confirm("Bu belge kaydı silinsin mi?"))return;con
 const ageLim=v=>(v.capacity||0)>35?15:7;
 function ageTxt(v){if(!v.model_year)return '<span class="k">yaş bilinmiyor</span>';const a=new Date().getFullYear()-v.model_year,l=ageLim(v);
   return a>l?`<span class="neg">${a} yaşında, sınır ${l}</span>`:a==l?`<span class="warn">${a} yaşında, gelecek sezon sınırı (${l}) aşar</span>`:`<span class="k">${a} yaşında · sınır ${l}</span>`}
+async function saveFirm(){const up={name:$("#cf_n").value.trim()||co.name,d2_no:$("#cf_d2").value.trim()||null,tax_no:$("#cf_tx").value.trim()||null,phone:$("#cf_ph").value.trim()||null,address:$("#cf_ad").value.trim()||null};
+  const r=await sb.from("companies").update(up).eq("id",co.id);if(r.error){alert(errText(r.error));return}Object.assign(co,{name:up.name,d2:up.d2_no,tax:up.tax_no,phone:up.phone,address:up.address});say("Firma bilgileri kaydedildi")}
 async function setYear(vid,val){const n=String(val).trim()===""?null:num(val),y=new Date().getFullYear();if(n!==null&&(n<1980||n>y+1)){alert("Geçerli bir model yılı yaz (ör. 2019).");return}
   const r=await sb.from("vehicles").update({model_year:n}).eq("id",vid);if(r.error){alert(errText(r.error));return}await vehiclesView("v")}
 async function backupAll(){
@@ -1354,6 +1369,6 @@ async function delVeh(id,plate){
   if(r.error){alert("Silinemedi: bu araca bağlı sefer ya da kayıtlar olabilir.");return}
   await vehiclesView();
 }
-for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD","savePaste","readPaste","undoJob","setCap","makeInvite","delInvite","delMember","joinInvite","savePw","resetPw","addFuel","addExp","delFuel","delExp","applyPrices","saveKm","sendDay","addDoc","delDoc","setSvc","saveFuelX","setMode","savePriceX","makeLink","offLink","applyRescue","ackAlert","saveVeh","uetdsMark","uetdsAll","uetdsToggle","makeStm","stmPdf","addCut","setYear","backupAll","addItem","delItem","delAgencyPrices"])globalThis[n]=once(n,globalThis[n]);
+for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD","savePaste","readPaste","undoJob","setCap","makeInvite","delInvite","delMember","joinInvite","savePw","resetPw","addFuel","addExp","delFuel","delExp","applyPrices","saveKm","sendDay","addDoc","delDoc","setSvc","saveFuelX","setMode","savePriceX","makeLink","offLink","applyRescue","ackAlert","saveVeh","uetdsMark","uetdsAll","uetdsToggle","saveFirm","makeStm","stmPdf","addCut","setYear","backupAll","addItem","delItem","delAgencyPrices"])globalThis[n]=once(n,globalThis[n]);
 (DTOK?driverView():boot()).catch(e=>{$("#app").innerHTML=`<p class="bad">Uygulama açılamadı: ${esc(e.message)}. Bağlantını kontrol edip sayfayı yenile.</p>`});
 </script></body></html>
