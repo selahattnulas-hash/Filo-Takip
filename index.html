@@ -169,10 +169,10 @@ async function logout(){await sb.auth.signOut();user=null;co=null;authView()}
 
 setInterval(()=>{try{if(co&&co.id&&!document.hidden)watchTick()}catch(e){}},60000);
 async function home(){
-  const r=await sb.from("company_members").select("company_id, role, companies(name,uetds_alerts,d2_no,tax_no,phone,address)").order("created_at").limit(1);
+  const r=await sb.from("company_members").select("company_id, role, companies(name,uetds_alerts,d2_no,tax_no,phone,address,digest_on)").order("created_at").limit(1);
   if(r.error){$("#app").innerHTML=`<p class="bad">Veri okunamadı: ${esc(r.error.message)}</p>`;return}
   if(!r.data.length){companyView();return}
-  ROLE=r.data[0].role;co={id:r.data[0].company_id,name:r.data[0].companies?r.data[0].companies.name:"",uetds:!(r.data[0].companies&&r.data[0].companies.uetds_alerts===false)};UETDS_ON=co.uetds;{const c=r.data[0].companies||{};co.d2=c.d2_no;co.tax=c.tax_no;co.phone=c.phone;co.address=c.address}
+  ROLE=r.data[0].role;co={id:r.data[0].company_id,name:r.data[0].companies?r.data[0].companies.name:"",uetds:!(r.data[0].companies&&r.data[0].companies.uetds_alerts===false)};UETDS_ON=co.uetds;{const c=r.data[0].companies||{};co.d2=c.d2_no;co.digest=c.digest_on!==false;co.tax=c.tax_no;co.phone=c.phone;co.address=c.address}
   try{if(window.Notification&&Notification.permission=="granted")pushOn(false)}catch(e){}
   await vehiclesView();
 }
@@ -528,6 +528,7 @@ async function pushOn(ask){try{if(!("serviceWorker" in navigator)||!window.PushM
   if(s&&s.options&&s.options.applicationServerKey){const a=new Uint8Array(s.options.applicationServerKey);if(a.length!=K.length||a.some((x,i)=>x!=K[i])){await s.unsubscribe();s=null}}
   if(!s)s=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:K});
   const j=s.toJSON(),r=await sb.from("push_subs").upsert({company_id:co.id,user_id:user.id,email:user.email,endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth,ua:navigator.userAgent.slice(0,200)},{onConflict:"endpoint"});PUSHOK=!r.error;return PUSHOK}catch(e){return false}}
+async function digestToggle(on){const r=await sb.from("companies").update({digest_on:on}).eq("id",co.id);if(r.error){alert(errText(r.error));return}co.digest=on;say(on?"Özet bildirimleri açık":"Özet bildirimleri kapalı")}
 async function ackAlert(id,sn){const r=await sb.rpc("ack_alert",{p_id:id,p_snooze:sn||0});if(r.error){alert(errText(r.error));return}await watchTick()}
 function notify(title,body,tag){try{if(PUSHOK||!window.Notification||Notification.permission!="granted")return;if(SWR&&SWR.showNotification){SWR.showNotification(title,{body,tag});return}new Notification(title,{body,tag})}catch(e){}}
 function snooze(k){try{localStorage.setItem("ft_snz_"+k,String(Date.now()+30*6e4))}catch(e){}WATCH=WATCH.filter(x=>x.j.id+x.k!=k);watchView()}
@@ -542,11 +543,12 @@ async function watchTick(render){
 function watchView(){const e=$("#watch");if(!e)return;const dn={};DRV.forEach(d=>dn[d.id]=d);
   const ios=/iPhone|iPad|iPod/.test(navigator.userAgent),pwa=matchMedia("(display-mode: standalone)").matches||navigator.standalone,N=window.Notification;
   const nb=N&&N.permission=="granted"?(PUSHOK?'<p class="sub ok" style="margin:6px 0 0">Bu cihaza bildirim gelir; uygulama kapalıyken de. Kimse "Gördüm" demezse 5 dakikada bir tekrarlanır.</p>':'<p class="sub ok" style="margin:6px 0 0">Bu cihazda bildirim izni var. <button class="x n" onclick="pushOn(true).then(()=>watchView())">Kapalıyken de gelsin</button></p>'):N&&N.permission=="denied"?'<p class="sub warn" style="margin:6px 0 0">Bildirimler bu cihazda engellenmiş; telefon ayarlarından bu site için izin ver.</p>':N?'<div class="row"><button class="alt" onclick="pushOn(true).then(()=>watchView())">Bu cihazda bildirimleri aç</button></div>':ios&&!pwa?'<p class="sub" style="margin:6px 0 0">iPhone\'da bildirim için: Safari\'de paylaş düğmesi → "Ana Ekrana Ekle". Sonra uygulamayı ana ekrandaki simgeden aç, burada "Bu cihazda bildirimleri aç" düğmesi çıkar.</p>':'<p class="sub" style="margin:6px 0 0">Bu tarayıcı bildirim desteklemiyor.</p>';
-  if(!WATCH.length){e.innerHTML=`<div class="card"><h2>Canlı takip</h2><p class="sub" style="margin:0">Şu an uyarı yok. Uygulama açıkken her dakika kontrol edilir.</p>${nb}</div>`;return}
+  const dg=ROLE=="owner"&&PUSHOK?`<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" style="width:auto" ${co.digest!==false?"checked":""} onchange="digestToggle(this.checked)"> Sabah 08:00 günün özeti, akşam 22:00 gün sonu bildirimi</label>`:"";
+  if(!WATCH.length){e.innerHTML=`<div class="card"><h2>Canlı takip</h2><p class="sub" style="margin:0">Şu an uyarı yok. Uygulama açıkken her dakika kontrol edilir.</p>${nb}${dg}</div>`;return}
   e.innerHTML=`<div class="card" style="border-color:var(--neg,#b83a2b)"><h2>Canlı takip</h2>${WATCH.map(x=>{const j=x.j,v=VEH.find(y=>y.id==j.vehicle_id),d=dn[j.driver_id],tel=d&&d.phone?String(d.phone).replace(/[^\d+]/g,""):"";
     return `<div class="pl"><b class="${x.lvl==2?"neg":"warn"}">${fM(jP(j))} ${TLN[j.job_type]||""}${j.run_code?" · iş "+esc(j.run_code):""}</b> · ${esc(v?v.plate:"")}${d?" · "+esc(d.name):""}<br>${esc(x.t)}${tel?` <a class="lk" href="tel:${esc(tel)}">Kaptanı ara</a>`:""}${(w=>w?(w.acked_at?`<br><span class="ok">Gördü: ${esc((w.acked_name||"").split("@")[0])} ${tHM(w.acked_at)}</span>`:w.snooze_until&&new Date(w.snooze_until)>new Date()?`<br><span class="k">Susturuldu (${tHM(w.snooze_until)}'e kadar)</span>`:`<br><span class="k">${w.sends||0} bildirim gönderildi</span> <button class="x n" onclick="ackAlert('${w.id}',0)">Gördüm</button> <button class="x" onclick="ackAlert('${w.id}',30)">30 dk sustur</button>`):` <button class="x" onclick="snooze('${j.id+x.k}')">30 dk sustur</button>`)(WA[j.id+"|"+x.k])}
     ${(x.res||[]).map(s=>`<br><span class="k">Öneri: ${esc(s.txt)}</span> <button class="x n" onclick="applyRescue('${j.id}','${s.w.id}','${s.k?s.k.id:""}','${s.u?s.u.id:""}')">Uygula</button>`).join("")}${x.late&&!(x.res||[]).length?'<br><span class="k">Zamanında yetişebilecek boş araç bulunamadı.</span>':""}</div>`}).join("")}
-  ${nb}<p class="sub">Uygulama açıkken her dakika kontrol edilir. Konum yalnızca kaptan düğmeye bastığında bilinir; diğer durumlarda saat ve plana göre tahmin edilir.</p></div>`}
+  ${nb}${dg}<p class="sub">Uygulama açıkken her dakika kontrol edilir. Konum yalnızca kaptan düğmeye bastığında bilinir; diğer durumlarda saat ve plana göre tahmin edilir.</p></div>`}
 async function applyRescue(jid,wid,kid,uid){
   const w=VEH.find(x=>x.id==wid),u=VEH.find(x=>x.id==uid);if(!confirm(uid?`İş ${w.plate} aracına, bu aracın sonraki işi ${u.plate} aracına verilsin mi? Şoförlere yeni işlerini göndermeyi unutma.`:`İş ${w.plate} aracına verilsin mi? Şoföre yeni işini göndermeyi unutma.`))return;
   const up=async(id,v)=>{const x={vehicle_id:v.id,driver_id:v.default_driver_id||null};const r=await sb.from("jobs").update(x).eq("id",id);if(r.error)throw r.error};

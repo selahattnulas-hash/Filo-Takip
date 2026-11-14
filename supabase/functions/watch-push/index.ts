@@ -140,10 +140,26 @@ async function ack(u){
   const s=sid?await SB.from("push_subs").select("email,user_id,company_id").eq("id",sid).maybeSingle():{data:null},nm=s.data&&s.data.company_id==a.data.company_id?s.data.email:null;
   const up=sn>0?{snooze_until:new Date(Date.now()+Math.min(sn,120)*6e4).toISOString(),acked_name:nm,acked_by:s.data&&s.data.user_id}:{acked_at:new Date().toISOString(),acked_name:nm,acked_by:s.data&&s.data.user_id};
   await SB.from("watch_alerts").update(up).eq("id",id);return json({ok:true})}
+async function digest(co,subs,day,now){
+  const kind=now>=480&&now<495?"sabah":now>=1320&&now<1335?"aksam":null;if(!kind)return null;
+  const ex=await SB.from("digests").select("day").eq("company_id",co).eq("kind",kind).eq("day",day).maybeSingle();if(ex.data)return null;
+  const c=await SB.from("companies").select("digest_on").eq("id",co).maybeSingle();if(c.data&&c.data.digest_on===false)return null;
+  const own=(await SB.from("company_members").select("user_id").eq("company_id",co).eq("role","owner")).data||[],ids=new Set(own.map(x=>x.user_id)),os=subs.filter(s=>ids.has(s.user_id));if(!os.length)return null;
+  const add=(d,n)=>new Date(new Date(d+"T12:00:00Z").getTime()+n*864e5).toISOString().slice(0,10),sym={TRY:"₺",EUR:"€",USD:"$",GBP:"£"},fmt=o=>Object.keys(o).map(k=>Math.round(o[k]).toLocaleString("tr-TR")+" "+(sym[k]||k)).join(" + ")||"0";
+  let title,body;
+  if(kind=="sabah"){const y=add(day,-1),[t,yy]=await Promise.all([SB.from("jobs").select("job_type,vehicle_id,amount,agency_id").eq("company_id",co).eq("job_date",day),SB.from("jobs").select("status,amount,currency").eq("company_id",co).eq("job_date",y)]);
+    const T=t.data||[],Y=yy.data||[],rev={};Y.filter(j=>j.status=="tamamlandi").forEach(j=>{if(Number(j.amount))rev[j.currency||"TRY"]=(rev[j.currency||"TRY"]||0)+Number(j.amount)});
+    title="Günaydın · bugün "+T.length+" iş";
+    body=`Arrival ${T.filter(j=>j.job_type=="varis").length}, Depar ${T.filter(j=>j.job_type=="depar").length}, Ara Transfer ${T.filter(j=>j.job_type=="transfer").length}. Araç atanmamış ${T.filter(j=>!j.vehicle_id).length}, fiyatsız ${T.filter(j=>!Number(j.amount)&&j.agency_id).length}.\nDün: ${Y.filter(j=>j.status=="tamamlandi").length}/${Y.length} iş tamamlandı, gelir ${fmt(rev)}.`}
+  else{const tm=add(day,1),[t,n]=await Promise.all([SB.from("jobs").select("status,amount,agency_id,uetds_status,vehicle_id").eq("company_id",co).eq("job_date",day),SB.from("jobs").select("vehicle_id").eq("company_id",co).eq("job_date",tm)]);
+    const T=t.data||[],N=n.data||[];title="Gün sonu";
+    body=`Bugün ${T.length} iş: tamamlanmayan ${T.filter(j=>j.status!="tamamlandi").length}, fiyatsız ${T.filter(j=>!Number(j.amount)&&j.agency_id).length}${UETDS_ON?", U-ETDS işaretsiz "+T.filter(j=>j.vehicle_id&&j.uetds_status!="bildirildi").length:""}.\nYarın ${N.length} iş, araç atanmamış ${N.filter(j=>!j.vehicle_id).length}.`}
+  const ins=await SB.from("digests").insert({company_id:co,kind,day,body,sent:0});if(ins.error)return null;
+  const sent=await push(os,{title,body,tag:"digest-"+kind+"-"+day});await SB.from("digests").update({sent}).eq("company_id",co).eq("kind",kind).eq("day",day);return{kind,sent}}
 Deno.serve(async req=>{
   if(req.method=="OPTIONS")return new Response(null,{headers:CORS});
   const u=new URL(req.url);if(u.searchParams.get("vapid"))return json({key:(await keys()).vapid_public});if(u.searchParams.get("ack"))return ack(u);
   const cs=await SB.from("app_secrets").select("value").eq("name","cron").maybeSingle();if(!cs.data||req.headers.get("x-cron-secret")!==cs.data.value)return json({error:"forbidden"},403);await keys();
-  const subs=(await SB.from("push_subs").select("id,company_id,endpoint,p256dh,auth")).data||[],by={};subs.forEach(s=>(by[s.company_id]=by[s.company_id]||[]).push(s));
-  const day=istDate(),now=istMin(),out=[];for(const co in by){try{out.push(await runCompany(co,by[co],day,now))}catch(e){out.push({co,error:String(e)})}}
+  const subs=(await SB.from("push_subs").select("id,company_id,endpoint,p256dh,auth,user_id")).data||[],by={};subs.forEach(s=>(by[s.company_id]=by[s.company_id]||[]).push(s));
+  const day=istDate(),now=istMin(),out=[];for(const co in by){try{out.push(await runCompany(co,by[co],day,now));const dg=await digest(co,by[co],day,now);if(dg)out.push(dg)}catch(e){out.push({co,error:String(e)})}}
   return json({day,now,out})});
