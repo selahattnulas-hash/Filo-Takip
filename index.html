@@ -1318,9 +1318,23 @@ async function cariTab(){
   if(!need(b))return;
   const bal={};(b.data||[]).forEach(x=>{if(Number(x.balance)!=0)(bal[x.agency_id]=bal[x.agency_id]||[]).push(x)});
   const list=AGN.filter(a=>bal[a.id]).map(a=>`<div class="veh"><div><b>${esc(a.name)}</b><br>${bal[a.id].map(x=>`<span class="${x.balance>0?"pos":"neg"}">${fc(Math.abs(x.balance),x.currency)} ${x.balance>0?"bize borçlu":"biz borçluyuz"}</span> <button class="x" data-c="${esc(x.currency)}" data-b="${Number(x.balance)}" onclick="settle('a','${a.id}',this.dataset.c,+this.dataset.b)">${x.balance>0?"Ödeme aldık":"Ödeme yaptık"}</button>`).join("<br>")}</div></div>`).join("")||`<p class="sub">Açık cari bakiye yok. İşleri tamamladıkça burada görünür.</p>`;
-  $("#tab").innerHTML=`<div class="card"><h2>Cari hesaplar</h2><p class="sub">Para birimleri ayrı ayrı tutulur, birbirine çevrilmez.</p>${list}</div><div id="stm"></div><div id="pr"></div><div id="aud"></div>`;
-  stmView();priceView();auditView();
+  $("#tab").innerHTML=`<div class="card"><h2>Cari hesaplar</h2><p class="sub">Para birimleri ayrı ayrı tutulur, birbirine çevrilmez.</p>${list}</div><div id="age"></div><div id="stm"></div><div id="pr"></div><div id="aud"></div>`;
+  ageView();stmView();priceView();auditView();
 }
+async function ageView(){
+  const e=$("#age");if(!e)return;const r=await sb.from("ledger_entries").select("agency_id,currency,amount,kind,entry_date,created_at").eq("company_id",co.id).not("agency_id","is",null).order("entry_date").limit(10000);if(r.error||!$("#age"))return;
+  const td=new Date(today()+"T12:00:00Z"),G={};(r.data||[]).forEach(x=>{const k=x.agency_id+"|"+x.currency;(G[k]=G[k]||[]).push(x)});const out=[];
+  for(const k in G){const [aid,cur]=k.split("|"),D=[],C=[];G[k].forEach(x=>{const a=Number(x.amount),d=x.entry_date||String(x.created_at).slice(0,10);if(a>0)D.push({d,a});else if(a<0)C.push(-a)});
+    let cr=C.reduce((s,x)=>s+x,0);D.sort((p,q)=>p.d<q.d?-1:1);const B=[0,0,0,0];let oldest=null;
+    for(const x of D){const use=Math.min(cr,x.a);cr-=use;const rest=x.a-use;if(rest<=0.005)continue;const age=Math.round((td-new Date(x.d+"T12:00:00Z"))/864e5);B[age<=30?0:age<=60?1:age<=90?2:3]+=rest;if(oldest==null)oldest=age}
+    const tot=B.reduce((s,x)=>s+x,0);if(tot>0.5)out.push({aid,cur,B,tot,oldest})}
+  if(!out.length){e.innerHTML="";return}const an={};AGN.forEach(a=>an[a.id]=a.name);out.sort((p,q)=>(q.oldest||0)-(p.oldest||0));AGE=out;
+  e.innerHTML=`<div class="card"><h2>Alacak yaşlandırma</h2><p class="sub">Acentanın ödenmemiş tutarları, iş tamamlandığı günden bu yana geçen süreye göre. Gelen ödemeler en eski alacaktan düşülür.</p>
+  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><tr><th style="text-align:left">Acenta</th><th>0–30 gün</th><th>31–60</th><th>61–90</th><th>90+</th></tr>
+  ${out.map((x,i)=>`<tr style="border-top:1px solid var(--line,#2a3340)"><td><b>${esc(an[x.aid]||"?")}</b><br><span class="k">toplam ${fc(x.tot,x.cur)}</span><br><button class="x n" onclick="ageWa(${i})">Hatırlatma metni</button></td>${x.B.map((b,j)=>`<td style="text-align:right" class="${j>=2&&b?"neg":j==1&&b?"warn":""}">${b?fc(b,x.cur):"–"}</td>`).join("")}</tr>`).join("")}</table></div></div>`}
+let AGE=[];
+function ageWa(i){const x=AGE[i];if(!x)return;const a=AGN.find(y=>y.id==x.aid)||{},t=`Merhaba, ${a.name||""} adına ${co.name||"firmamız"} cari hesabında ödenmemiş toplam ${fc(x.tot,x.cur)} bulunuyor${x.oldest?`; en eskisi ${x.oldest} gün önceki işlere ait`:""}. Dönem dökümünü iletebiliriz. Ödeme planınızı paylaşırsanız seviniriz. İyi çalışmalar.`;
+  try{navigator.clipboard.writeText(t)}catch(e){}window.open("https://wa.me/?text="+encodeURIComponent(t),"_blank");say("Metin panoya kopyalandı, WhatsApp açılıyor")}
 let SF="",ST="",SA="",SD=null;
 const dmY=d=>d?d.slice(8)+"."+d.slice(5,7)+"."+d.slice(0,4):"";
 function stmRange(k){const n=new Date(),t=today();if(k=="15"){ST=t;SF=today(new Date(Date.now()-14*864e5))}else if(k=="ay"){ST=t;SF=t.slice(0,8)+"01"}else if(k=="gecen"){const a=new Date(n.getFullYear(),n.getMonth()-1,1),b=new Date(n.getFullYear(),n.getMonth(),0);SF=today(a);ST=today(b)}
