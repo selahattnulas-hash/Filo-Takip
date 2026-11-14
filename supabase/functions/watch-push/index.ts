@@ -9,9 +9,16 @@ const fM=x=>{x=((Math.round(x)%1440)+1440)%1440;return String(Math.floor(x/60)).
 const isoM=iso=>mOf(tHM(iso));
 const trv=(a,b)=>{if(!a||!b)return null;if(a.k&&b.k&&a.k==b.k)return 5;const km=roadKm(a,b);return Math.round(km<=15?km*1.4:21+(km-15)*0.7)+5};
 const ptLoc=e=>e&&e.lat!=null?{k:"_",c:[e.lat,e.lng]}:null;
+const trvB=(a,b)=>{const t=trv(a,b);return t==null?null:Math.round(t*1.1)+3};
+const lateTh=j=>j.job_type=="varis"?15:5;
 let DP=[],UETDS_ON=true,JW=[];
 function lastPos(v,J,now){const ds=new Set(J.filter(x=>x.vehicle_id==v.id&&x.driver_id).map(x=>x.driver_id));if(v.default_driver_id)ds.add(v.default_driver_id);
-  const p=DP.filter(x=>x.kind=="konum"&&ds.has(x.driver_id)&&x.lat!=null).pop();if(!p)return null;const age=now-isoM(p.at);return age>=0&&age<=20?{loc:ptLoc(p),at:isoM(p.at)}:null}
+  const L=DP.filter(x=>x.kind=="konum"&&ds.has(x.driver_id)&&x.lat!=null),p=L[L.length-1];if(!p)return null;const age=now-isoM(p.at);if(!(age>=0&&age<=20))return null;
+  const q=L[L.length-2],pq=q&&isoM(p.at)-isoM(q.at)<=15?ptLoc(q):null;return{loc:ptLoc(p),at:isoM(p.at),age,prev:pq}}
+function nearS(lp,S){const k=lp&&S?roadKm(lp.loc,S):null;return k!=null&&k<=2.5}
+function movingTo(lp,S){if(!lp||!lp.prev||!S||lp.age>10)return false;const a=roadKm(lp.prev,S),b=roadKm(lp.loc,S);return a!=null&&b!=null&&b<a-1}
+function brokenAt(v,J){let t=null;for(const j of J){if(j.vehicle_id!=v.id)continue;const so=DP.filter(x=>x.job_id==j.id&&x.kind=="sorun").pop();if(so&&(t==null||isoM(so.at)>t))t=isoM(so.at)}
+  if(t==null)return null;for(const j of J){if(j.vehicle_id!=v.id)continue;if((EV[j.id]||[]).some(e=>isoM(e.at)>t))return null}return t}
 function jStart(j){const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq);if(j.job_type=="varis")return locOf(j.from_city)||locOf("BJV");const f=st[0];return f?locOf(f.region||f.place)||locOf(j.from_city):locOf(j.from_city)}
 function jP(j){if(j.job_type=="varis"&&(j.eta_landing||j.flight_time))return mOf(j.eta_landing||j.flight_time)+25;const st=(j.job_stops||[]).filter(s=>s.pickup_time).sort((a,b)=>a.pickup_time<b.pickup_time?-1:1);return mOf(j.pickup_time)??(st[0]?mOf(st[0].pickup_time):null)??mOf(j.flight_time)}
 function chain(j,from,t0){
@@ -31,11 +38,12 @@ function vehState(v,now,J){
     if(ev.some(e=>e.kind=="aldi")||P<=now){busy=x;free=Math.max(now,end??now);loc=R.e||loc;src="işte";break}
     if(ev.some(e=>e.kind=="cikti")){busy=x;free=Math.max(now,end??now);loc=R.e||loc;src="işe gidiyor";break}
     break}
+  if(!busy){const lp=lastPos(v,J,now);if(lp&&lp.age<=10){loc=lp.loc;src="konum"}}
   return{loc,free,busy,src}}
 function nextJob(v,afterMin,J,skip){return J.filter(x=>x.vehicle_id==v.id&&x.id!=skip&&x.status!="tamamlandi"&&jP(x)!=null&&jP(x)>=afterMin&&!(EV[x.id]||[]).some(e=>e.kind=="birakti")).sort((a,b)=>jP(a)-jP(b))[0]||null}
 function canCover(w,j,now,J,exclude){
-  if(w.capacity&&j.pax&&w.capacity<j.pax)return null;const s=vehState(w,now,J);if(s.busy&&s.busy.id==j.id)return null;const P=jP(j),d=trv(s.loc,jStart(j));if(d==null||P==null)return null;
-  const arr=Math.max(s.free,now)+d;if(arr>P+5)return null;const dur=(jEnd(j)??P+60)-P,fin=Math.max(arr,P)+dur,nx=nextJob(w,now,J,j.id),need=nx?trv(jobRoute(j).e,jStart(nx)):0;
+  if(w.capacity&&j.pax&&w.capacity<j.pax)return null;if(brokenAt(w,J)!=null)return null;const s=vehState(w,now,J);if(s.busy&&s.busy.id==j.id)return null;const P=jP(j),d=trvB(s.loc,jStart(j));if(d==null||P==null)return null;
+  const arr=Math.max(s.free,now)+d;if(arr>P+(j.job_type=="varis"?10:0))return null;const dur=(jEnd(j)??P+60)-P,fin=Math.max(arr,P)+dur,nx=nextJob(w,now,J,j.id),need=nx?trv(jobRoute(j).e,jStart(nx)):0;
   return{w,arr:Math.round(arr),fin,nx:nx&&fin+(need||0)>jP(nx)-5?nx:null}}
 function rescue(j,now,J){
   const out=[];for(const w of VEH){if(w.id==j.vehicle_id)continue;const c=canCover(w,j,now,J);if(!c)continue;
@@ -46,23 +54,29 @@ function watchCalc(J,now){
   const A=[],snz=k=>{try{return Number(localStorage.getItem("ft_snz_"+k)||0)>Date.now()}catch(e){return false}};
   for(const j of J){if(j.status=="tamamlandi")continue;const ev=EV[j.id]||[],has=k=>ev.filter(e=>e.kind==k).pop(),c=has("cikti"),a=has("aldi"),b=has("birakti");if(b)continue;
     const P=jP(j);if(P==null)continue;const S=jStart(j),end=jEnd(j);
-    if(!j.vehicle_id){if(now>=P-60&&now<P+30)A.push({j,k:"aracsiz",lvl:now>=P-30?2:1,t:`Araç atanmamış. Alış ${fM(P)}`,late:true});continue}
+    if(!j.vehicle_id){if(now>=P-120&&now<(end??P+60))A.push({j,k:"aracsiz",lvl:now>=P-60?2:1,t:`Araç atanmamış. Alış ${fM(P)}${now>P?" (saati geçti)":""}`,late:true});continue}
     const v=VEH.find(x=>x.id==j.vehicle_id);if(!v)continue;const others=J.filter(x=>x.id!=j.id);
     const ns=JW.find(w=>w.job_id==j.id&&w.kind=="noshow");if(ns){if(j.uetds_status=="noshow"||now-isoM(ns.started_at)<30)A.push({j,k:"noshow",lvl:2,t:`Kaptan yolcunun gelmediğini bildirdi (saat ${tHM(ns.started_at)}). Acentayı ara${UETDS_ON?"; U-ETDS'ye 30 dk içinde gelmeyen yolcuyu bildir":""}.`});continue}
     const wo=JW.find(w=>w.job_id==j.id&&w.kind=="bekleme"&&!w.ended_at);if(wo&&now-isoM(wo.started_at)>=20)A.push({j,k:"bekleme",lvl:1,t:`Kaptan ${now-isoM(wo.started_at)} dk'dır yolcuyu bekliyor (saat ${tHM(wo.started_at)}'ten beri)`});
     if(UETDS_ON&&j.uetds_status!="bildirildi"&&j.uetds_status!="noshow"&&now>=P-90&&now<P+10)A.push({j,k:"uetds",lvl:(now>=P-60||j.uetds_status=="guncelle")?2:1,t:j.uetds_status=="guncelle"?`U-ETDS: işte değişiklik oldu (kişi, araç, şoför ya da saat); bildirimi güncelle`:`U-ETDS bildirimi işaretlenmedi: sefer ${fM(P)}, en geç saat ${fM(P-60)} bildirilmeli`});
-    const jp=DP.filter(x=>x.job_id==j.id&&x.kind!="konum"),dl=jp.filter(x=>x.kind=="gecikme").pop(),so=jp.filter(x=>x.kind=="sorun").pop();
-    if(dl)A.push({j,k:"gecikme",lvl:2,t:`Kaptan ${dl.minutes} dk gecikeceğini bildirdi (saat ${tHM(dl.at)})`,late:true});
-    if(so)A.push({j,k:"sorun",lvl:2,t:`Kaptan sorun bildirdi (saat ${tHM(so.at)}): ${so.note||"açıklama yok"}`,late:true});
-    if(!c&&!a&&!dl&&!so){const st=vehState(v,now,others),busy=st.busy,lp=busy?null:lastPos(v,J,now),T=trv(lp?lp.loc:st.loc,S)??30,arr=Math.max(st.free,now)+T;
-      if(busy&&arr>P+10)A.push({j,k:"zincir",lvl:2,t:`Önceki iş uzuyor: ${v.plate} buraya saat ~${fM(arr)} gibi varır (alış ${fM(P)}, ${Math.round(arr-P)} dk geç)`,late:true});
-      else if(!busy&&now>=P-T-10&&now<P+20){const late=now+T>P+5;A.push({j,k:"cikmadi",lvl:late?2:1,t:late?`Kaptan yola çıktım demedi; şimdi çıksa alışa saat ~${fM(now+T)} gibi varır (alış ${fM(P)}). Ara ve sor.`:`Kaptanın yola çıkma zamanı: alış ${fM(P)}, yol ~${T} dk, en geç saat ${fM(P-T)} gibi çıkmalı`,late})}}
-    if(c&&!a){const from=ptLoc(c)||vehState(v,isoM(c.at),others).loc,T=trv(from,S)??30,arr=isoM(c.at)+T;
-      if(arr>P+10)A.push({j,k:"gec",lvl:2,t:`Geç kalacak: yola saat ${tHM(c.at)} çıktı, alışa saat ~${fM(arr)} gibi varır (${Math.round(arr-P)} dk geç)`,late:true});
+    const jp=DP.filter(x=>x.job_id==j.id&&x.kind!="konum"),dl0=jp.filter(x=>x.kind=="gecikme").pop(),dm=dl0?Number(dl0.minutes)||0:0,dl=dl0&&!a&&now<=Math.max(P,isoM(dl0.at))+dm+15?dl0:null,so=jp.filter(x=>x.kind=="sorun").pop();
+    if(dl)A.push({j,k:"gecikme",lvl:dm>=15?2:1,t:`Kaptan ${dm} dk gecikeceğini bildirdi (saat ${tHM(dl.at)}); alış ~${fM(P+dm)}`,late:dm>=15});
+    const bk=brokenAt(v,J);
+    if(so&&bk!=null&&isoM(so.at)==bk)A.push({j,k:"sorun",lvl:2,t:`Kaptan sorun bildirdi (saat ${tHM(so.at)}): ${so.note||"açıklama yok"}`,late:true});
+    else if(bk!=null&&!c&&!a&&P>bk){A.push({j,k:"ariza",lvl:2,t:`${v.plate} için saat ${fM(bk)}'de sorun bildirildi; bu iş de etkilenebilir (alış ${fM(P)}). Başka araç ayarla ya da kaptanı ara.`,late:true});continue}
+    const pj=J.filter(x=>x.driver_id&&x.driver_id==j.driver_id&&x.id!=j.id&&jP(x)!=null&&jP(x)<now-60),pn=pj.filter(x=>(EV[x.id]||[]).length).length,lowT=pj.length>=2&&pn/pj.length<0.3,lowTx=lowT?" Bu kaptan bugün düğmeleri kullanmıyor; ara.":"";
+    if(!c&&!a&&!so){const st=vehState(v,now,others),busy=st.busy,lp=busy?null:lastPos(v,J,now),mv=movingTo(lp,S),T=trvB(lp?lp.loc:st.loc,S)??30,arr=Math.max(st.free,now)+T,lim=P+lateTh(j)+(dl?dm:0);
+      if(busy&&arr>lim)A.push({j,k:"zincir",lvl:2,t:`Önceki iş uzuyor: ${v.plate} buraya saat ~${fM(arr)} gibi varır (alış ${fM(P)}, ${Math.round(arr-P)} dk geç)`,late:true});
+      else if(!busy&&mv){const ar2=lp.at+T;if(ar2>lim&&!nearS(lp,S))A.push({j,k:"gec",lvl:2,t:`Geç kalacak: kaptan yolda görünüyor (konum ${fM(lp.at)}), alışa saat ~${fM(ar2)} gibi varır (${Math.round(ar2-P)} dk geç)`,late:true})}
+      else if(!busy&&now>=P-T-10&&now<P+20){const late=now+T>(dl?P+dm+5:P+10);if(!dl||late)A.push({j,k:"cikmadi",lvl:late&&!lowT?2:1,t:late?`Kaptan yola çıktım demedi${dl?" (bildirdiği gecikmeyi de aşıyor)":""}; şimdi çıksa alışa saat ~${fM(now+T)} gibi varır (alış ${fM(P)}). Ara ve sor.${lowTx}`:`Kaptanın yola çıkma zamanı: alış ${fM(P)}, yol ~${T} dk, en geç saat ${fM(P-T)} gibi çıkmalı`,late:late&&!lowT})}}
+    if(c&&!a){const lp=lastPos(v,J,now),fresh=lp&&lp.age<=10&&lp.at>isoM(c.at),from=fresh?lp.loc:ptLoc(c)||vehState(v,isoM(c.at),others).loc,T=trvB(from,S)??30,arr=(fresh?lp.at:isoM(c.at))+T;
+      if(arr>P+lateTh(j)+(dl?dm:0)&&!(fresh&&nearS(lp,S)))A.push({j,k:"gec",lvl:2,t:`Geç kalacak: yola saat ${tHM(c.at)} çıktı${fresh?`, son konuma (${fM(lp.at)}) göre`:""} alışa saat ~${fM(arr)} gibi varır (${Math.round(arr-P)} dk geç)`,late:true});
       else if(now>P+(j.job_type=="varis"?35:25)&&now<P+120)A.push({j,k:"almadi",lvl:1,t:`Alış saati ${fM(P)} geçti, "aldım" işareti yok`})}
-    if(!c&&!a&&now>=P+20&&now<(end??P+60)+30)A.push({j,k:"isaretyok",lvl:2,t:`Alış saati ${fM(P)} geçti, kaptandan hiç işaret yok. Ara ve sor.`});
+    if(!c&&!a&&!dl&&!so&&!movingTo(lastPos(v,J,now),S)&&now>=P+20&&now<(end??P+60)+30)A.push({j,k:"isaretyok",lvl:lowT?1:2,t:`Alış saati ${fM(P)} geçti, kaptandan hiç işaret yok. Ara ve sor.${lowTx}`});
     if(a&&end!=null&&now>end+20&&now<end+180)A.push({j,k:"birakmadi",lvl:1,t:`Tahmini bitiş ${fM(end)} geçti, "bıraktım" işareti yok`});
     if(j.job_type=="depar"&&j.flight_time&&(a||c)){const ch=a?chain(j,jStart(j),Math.max(isoM(a.at),P)):chain(j,ptLoc(c)||S,isoM(c.at)),l=ch[ch.length-1],F=mOf(j.flight_time);if(l&&F!=null&&l.t>F-75)A.push({j,k:"ucus",lvl:2,t:`Uçuş riski: havalimanına saat ~${fM(l.t)} gibi varır, uçuş ${fM(F)}`})}}
+  const U=A.filter(x=>x.k=="uetds"&&x.lvl==2);if(U.length>1){const f=U.slice().sort((p,q)=>jP(p.j)-jP(q.j))[0];for(let i=A.length-1;i>=0;i--)if(A[i].k=="uetds"&&A[i].lvl==2&&A[i]!==f)A.splice(i,1);
+    f.t=`U-ETDS: ${U.length} iş bildirim bekliyor (ilki ${fM(jP(f.j))}). İşler sekmesinden işaretle.`;f.n=U.length}
   A.forEach(x=>{if(x.late)x.res=rescue(x.j,now,J)});
   return A.filter(x=>!snz(x.j.id+x.k)).sort((p,q)=>q.lvl-p.lvl||jP(p.j)-jP(q.j))}
 const RD0={GUVERCINLIK:20,TORBA:30,BODRUM:40,GUMBET:40,BARDAKCI:40,BITEZ:45,ORTAKENT:50,GUNDOGAN:55,YALIKAVAK:60,TURGUTREIS:60,AKBUK:60,DIDIM:80,ALTINKUM:80};
