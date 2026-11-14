@@ -170,9 +170,14 @@ async function digest(co,subs,day,now){
     body=`Bugün ${T.length} iş: tamamlanmayan ${T.filter(j=>j.status!="tamamlandi").length}, fiyatsız ${T.filter(j=>!Number(j.amount)&&j.agency_id).length}${UETDS_ON?", U-ETDS işaretsiz "+T.filter(j=>j.vehicle_id&&j.uetds_status!="bildirildi").length:""}.\nYarın ${N.length} iş, araç atanmamış ${N.filter(j=>!j.vehicle_id).length}.`}
   const ins=await SB.from("digests").insert({company_id:co,kind,day,body,sent:0});if(ins.error)return null;
   const sent=await push(os,{title,body,tag:"digest-"+kind+"-"+day});await SB.from("digests").update({sent}).eq("company_id",co).eq("kind",kind).eq("day",day);return{kind,sent}}
+let KUR=null;
+async function kur(){if(KUR&&Date.now()-KUR.ts<3*3600e3)return json(KUR.d);
+  let x="";try{const r=await fetch("https://www.tcmb.gov.tr/kurlar/today.xml");if(!r.ok)return json({error:"tcmb "+r.status},502);x=await r.text()}catch(e){return json({error:"tcmb"},502)}
+  const d={date:(x.match(/Date="([^"]+)"/)||[])[1]||null,src:"TCMB"};for(const c of ["EUR","USD","GBP"]){const m=x.match(new RegExp('CurrencyCode="'+c+'"[\\s\\S]*?<ForexBuying>([\\d.]+)</ForexBuying>[\\s\\S]*?<ForexSelling>([\\d.]+)</ForexSelling>'));if(m)d[c]={buy:+m[1],sell:+m[2]}}
+  if(d.EUR)KUR={ts:Date.now(),d};return json(d)}
 Deno.serve(async req=>{
   if(req.method=="OPTIONS")return new Response(null,{headers:CORS});
-  const u=new URL(req.url);if(u.searchParams.get("vapid"))return json({key:(await keys()).vapid_public});if(u.searchParams.get("ack"))return ack(u);
+  const u=new URL(req.url);if(u.searchParams.get("vapid"))return json({key:(await keys()).vapid_public});if(u.searchParams.get("ack"))return ack(u);if(u.searchParams.get("kur"))return kur();
   const cs=await SB.from("app_secrets").select("value").eq("name","cron").maybeSingle();if(!cs.data||req.headers.get("x-cron-secret")!==cs.data.value)return json({error:"forbidden"},403);await keys();
   const subs=(await SB.from("push_subs").select("id,company_id,endpoint,p256dh,auth,user_id")).data||[],by={};subs.forEach(s=>(by[s.company_id]=by[s.company_id]||[]).push(s));
   const day=istDate(),now=istMin(),out=[];for(const co in by){try{out.push(await runCompany(co,by[co],day,now));const dg=await digest(co,by[co],day,now);if(dg)out.push(dg)}catch(e){out.push({co,error:String(e)})}}
