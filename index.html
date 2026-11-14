@@ -875,14 +875,25 @@ async function uetdsDay(){
   if(e)e.innerHTML=`<p class="sub ok">${rows.length-1} satır indirildi.${first?" İlk seferin bildirimi en geç "+esc(first)+" saatine kadar yapılmalı.":""}</p>`+(warn.length?`<p class="sub neg">Bildirimden önce tamamlanması gerekenler:</p><ul class="df">${warn.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p class="sub">Eksik görünmüyor.</p>`);
 }
 function jobSpan(j){if(!j.pickup_time)return null;const mn=t=>{const a=String(t).split(":");return a[0]*60+ +a[1]},s=mn(j.pickup_time),e=estEnd(j);let en=e&&e.t?mn(e.t):s+90;if(en<s)en+=1440;return[s,en]}
-function suggestVeh(j){
+function suggestVeh(j,L){L=L||JOBS;
   const sp=jobSpan(j);if(!sp)return null;const st=jobRoute(j).s;
-  const free=VEH.filter(v=>(!v.capacity||!j.pax||v.capacity>=j.pax)&&!JOBS.some(o=>o.id!=j.id&&o.vehicle_id==v.id&&o.job_date==j.job_date&&o.status!="tamamlandi"&&(x=>!x||(x[0]<sp[1]+15&&sp[0]<x[1]+15))(jobSpan(o))));
-  const c=free.map(v=>{const pv=JOBS.filter(o=>o.vehicle_id==v.id&&o.job_date==j.job_date&&o.pickup_time&&j.pickup_time&&o.pickup_time<j.pickup_time).sort((p,q)=>p.pickup_time<q.pickup_time?-1:1).pop();
+  const free=VEH.filter(v=>(!v.capacity||!j.pax||v.capacity>=j.pax)&&!L.some(o=>o.id!=j.id&&o.vehicle_id==v.id&&o.job_date==j.job_date&&o.status!="tamamlandi"&&(x=>!x||(x[0]<sp[1]+15&&sp[0]<x[1]+15))(jobSpan(o))));
+  const c=free.map(v=>{const pv=L.filter(o=>o.vehicle_id==v.id&&o.job_date==j.job_date&&o.pickup_time&&j.pickup_time&&o.pickup_time<j.pickup_time).sort((p,q)=>p.pickup_time<q.pickup_time?-1:1).pop();
     const from=pv?jobRoute(pv).e:locOf(v.home_city),dk=from&&st?(from.k==st.k?0:roadKm(from,st)):null;return Object.assign({},v,{_dk:dk})});
   if(!c.length)return null;const mk=Math.min(...c.map(v=>v._dk==null?9999:v._dk)),near=c.filter(v=>(v._dk==null?9999:v._dk)<=mk+10);
   return near.sort((a,b)=>(a.capacity||999)-(b.capacity||999)||(a._dk==null?9999:a._dk)-(b._dk==null?9999:b._dk))[0];
 }
+let AP=null;
+async function autoPlan(){const e=$("#ap");if(!e)return;e.innerHTML='<p class="sub">Hesaplanıyor…</p>';
+  const r=await sb.from("jobs").select(JCOLS+", job_stops(seq,place,region,pickup_time,pax)").eq("company_id",co.id).eq("job_date",PD).neq("status","tamamlandi").limit(500);if(r.error){e.innerHTML=`<p class="sub bad">${esc(errText(r.error))}</p>`;return}
+  await loadRD();const W=(r.data||[]).map(x=>Object.assign({},x)),un=W.filter(j=>!j.vehicle_id).sort((a,b)=>String(a.pickup_time||"99").localeCompare(String(b.pickup_time||"99"))),res=[];
+  for(const j of un){const v=suggestVeh(j,W);if(v){j.vehicle_id=v.id;res.push({j,v,dk:v._dk})}else res.push({j,v:null,why:!j.pickup_time?"saat yok":!jobSpan(j)?"süre hesaplanamadı":"uygun araç yok (kapasite ya da saat çakışması)"})}
+  AP=res;const ok=res.filter(x=>x.v),dk=ok.reduce((s,x)=>s+(x.dk||0),0);
+  e.innerHTML=`<p class="sub">${ok.length}/${res.length} işe araç bulundu${ok.length?`, toplam boş sürüş ~${dk} km`:""}. Atama, saat çakışmasını, kapasiteyi ve aracın önceki işinden gelişini hesaba katar; boş km farkı 10 km'den azsa küçük aracı seçer.</p>
+  ${res.map(x=>`<div class="pl">${h5(x.j.pickup_time)||"--:--"} · ${esc((x.j.from_city||"?")+" → "+(x.j.to_city||"?"))} · ${x.j.pax||"?"} kişi → ${x.v?`<b>${esc(x.v.plate)}</b>${x.v.capacity?` <span class="k">(${x.v.capacity} kişilik${x.dk!=null?`, boş ~${x.dk} km`:""})</span>`:""}`:`<span class="warn">${esc(x.why)}</span>`}</div>`).join("")}
+  ${ok.length?`<div class="row"><button onclick="applyPlan()">${ok.length} atamayı uygula</button><button class="alt" onclick="AP=null;$('#ap').innerHTML=''">Vazgeç</button></div>`:""}`}
+async function applyPlan(){if(!AP)return;let n=0;for(const x of AP.filter(y=>y.v)){const up={vehicle_id:x.v.id};if(!x.j.driver_id&&x.v.default_driver_id)up.driver_id=x.v.default_driver_id;const r=await sb.from("jobs").update(up).eq("id",x.j.id).is("vehicle_id",null);if(!r.error)n++}
+  AP=null;say(n+" işe araç atandı. Şoförlere PDF göndermeyi unutma");await vehiclesView("o")}
 function overdue(j){
   if(j.status=="tamamlandi")return false;const t=today();if(j.job_date<t)return true;if(j.job_date>t||!j.pickup_time)return false;
   const e=estEnd(j);if(!e||!e.t)return false;const mn=x=>{const a=String(x).split(":");return a[0]*60+ +a[1]};if(mn(e.t)<mn(j.pickup_time))return false;
@@ -918,7 +929,7 @@ async function planTab(){
       return all.length?`<div class="card"><h2>Yaklaşan belge ve bakımlar</h2>${all.map(x=>`<div class="pl">${x.t} · ${x.h}</div>`).join("")}<div class="row"><button class="alt" onclick="vehiclesView('v')">Araçlar'da düzenle</button></div></div>`:""})())+
     (dr.length?`<div class="card"><h2>Şoförlere günün işleri</h2><p class="sub">Her şoföre bu günün açık işleri tek PDF'te, her iş ayrı sayfa olarak gider.${nod?` <span class="warn">${nod} işe şoför atanmamış, onlar gönderilmez.</span>`:""}</p>${dr.map(x=>`<div class="veh"><div><b>${esc(x.d.name)}</b><br><span class="k">${x.n} iş · ilk ${x.f}</span></div><button class="x n" onclick="sendDay('${x.d.id}')">PDF gönder</button></div>`).join("")}</div>`:"")+
     (od.length?`<div class="card"><h2>Bitmiş olması gereken işler</h2><p class="sub">Tahmini bitiş saati geçti ama tamamlandı olarak işaretlenmedi. Bittiyse işaretle; şoför nakit aldıysa tutar sorulur.</p>${od.map(x=>`<div class="veh"><div>${line(x)}</div><button class="x n" onclick="doneJob('${x.j.id}')">Tamamla</button></div>`).join("")}</div>`:"")+
-    (un.length?`<div class="card"><h2>Araç atanmamış işler</h2>${un.map(line).join("")}<div class="row"><button class="alt" onclick="JF='acik';vehiclesView('j')">İşlerde araç ata</button></div></div>`:"")+
+    (un.length?`<div class="card"><h2>Araç atanmamış işler</h2>${un.map(line).join("")}<div class="row"><button onclick="autoPlan()">Otomatik dağıt (önizleme)</button><button class="alt" onclick="JF='acik';vehiclesView('j')">İşlerde araç ata</button></div><div id="ap"></div></div>`:"")+
     (VEH.length?cards:`<p class="sub">Henüz araç yok.</p><button onclick="vehiclesView('v')">Araç ekle</button>`)+
     `<div class="card"><h2>UETDS hazırlığı</h2><p class="sub">Bu günün işlerini UETDS alan adlarıyla tek tablo olarak indirir (Excel'de açılır). Bildirim, sefer başlamadan en geç 1 saat önce yapılmalı. Uyruk ve pasaport numarası acenta listelerinde olmadığı için boş gelir.</p><div class="row"><button onclick="uetdsDay()">Günün UETDS tablosunu indir</button><button class="alt" onclick="uetdsAll()">Hepsini bildirildi işaretle</button></div>${ROLE=="owner"?`<label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" ${co.uetds?"checked":""} onchange="uetdsToggle(this.checked)" style="width:auto"> Bildirilmemiş işler için hatırlat (seferden 90 dk önce uygulamada, 60 dk önce telefona)</label>`:""}<div id="uw"></div></div>`+
     `<p class="sub">Km'ler bölge merkezleri arasındaki yaklaşık yol mesafesidir; boş sürüş, aracın önceki işi bıraktığı bölgeden sonraki işin alış bölgesine gidişidir (aracın bulunduğu şehir girilmişse güne oradan başlar). Bitiş saatleri tahmindir (Bölge süreleri, İşler sekmesinin altında). Çakışma, bir aracın ya da şoförün önceki işi bitmeden yeni işe başlaması demektir.</p>`;
@@ -1391,6 +1402,6 @@ async function delVeh(id,plate){
   if(r.error){alert("Silinemedi: bu araca bağlı sefer ya da kayıtlar olabilir.");return}
   await vehiclesView();
 }
-for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD","savePaste","readPaste","undoJob","setCap","makeInvite","delInvite","delMember","joinInvite","savePw","resetPw","addFuel","addExp","delFuel","delExp","applyPrices","saveKm","sendDay","addDoc","delDoc","setSvc","saveFuelX","setMode","savePriceX","makeLink","offLink","applyRescue","ackAlert","saveVeh","uetdsMark","uetdsAll","uetdsToggle","saveFirm","saveFees","makeStm","stmPdf","addCut","setYear","backupAll","addItem","delItem","delAgencyPrices"])globalThis[n]=once(n,globalThis[n]);
+for(const n of ["addTrip","addJob","importAll","settle","markPaid","makeCompany","addVeh","addDrv","doneJob","setAmt","delJob","delTrip","delVeh","delDrv","setJobVeh","setJobDrv","setDefDrv","setEnd","setRD","savePaste","readPaste","undoJob","setCap","makeInvite","delInvite","delMember","joinInvite","savePw","resetPw","addFuel","addExp","delFuel","delExp","applyPrices","saveKm","sendDay","addDoc","delDoc","setSvc","saveFuelX","setMode","savePriceX","makeLink","offLink","applyRescue","ackAlert","saveVeh","applyPlan","uetdsMark","uetdsAll","uetdsToggle","saveFirm","saveFees","makeStm","stmPdf","addCut","setYear","backupAll","addItem","delItem","delAgencyPrices"])globalThis[n]=once(n,globalThis[n]);
 (DTOK?driverView():boot()).catch(e=>{$("#app").innerHTML=`<p class="bad">Uygulama açılamadı: ${esc(e.message)}. Bağlantını kontrol edip sayfayı yenile.</p>`});
 </script></body></html>
