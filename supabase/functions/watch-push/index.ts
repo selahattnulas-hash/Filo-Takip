@@ -176,16 +176,16 @@ async function locPush(){const since=new Date(Date.now()-120e3).toISOString();
   const [sr,lr,rec]=await Promise.all([SB.from("driver_push_subs").select("*").in("driver_id",ds),SB.from("driver_links").select("driver_id,token").in("driver_id",ds).eq("active",true),
     SB.from("loc_requests").select("driver_id").in("driver_id",ds).gte("pushed_at",new Date(Date.now()-60e3).toISOString())]);
   const recent=new Set((rec.data||[]).map(x=>x.driver_id)),sent=[],nosub=[],done=new Set();
-  for(const r of L){const subs=(sr.data||[]).filter(x=>x.driver_id==r.driver_id),tk=(lr.data||[]).find(x=>x.driver_id==r.driver_id);
+  for(const r of L){const tk=(lr.data||[]).find(x=>x.driver_id==r.driver_id),subs=tk?(sr.data||[]).filter(x=>x.driver_id==r.driver_id&&x.link_token==tk.token):[];
     if(!subs.length||!tk){if(!nosub.includes(r.driver_id))nosub.push(r.driver_id);continue}
     if(!recent.has(r.driver_id)&&!done.has(r.driver_id)){done.add(r.driver_id);
       for(const x of subs){try{await webpush.sendNotification({endpoint:x.endpoint,keys:{p256dh:x.p256dh,auth:x.auth}},JSON.stringify({title:"Ofis konumunu istiyor",body:"Dokun, konumun bir kez gönderilsin.",tag:"lr",url:"./?sofor="+tk.token+"&lr=1"}),{TTL:900,urgency:"high"});await SB.from("driver_push_subs").update({last_ok:new Date().toISOString()}).eq("id",x.id)}
         catch(e){const c=e&&e.statusCode;if(c==404||c==410)await SB.from("driver_push_subs").delete().eq("id",x.id)}}}
     await SB.from("loc_requests").update({pushed_at:new Date().toISOString()}).eq("id",r.id);sent.push(r.id)}
   return{sent,nosub}}
-let KUR=null;
-async function kur(){if(KUR&&Date.now()-KUR.ts<3*3600e3)return json(KUR.d);
-  let x="";try{const r=await fetch("https://www.tcmb.gov.tr/kurlar/today.xml");if(!r.ok)return json({error:"tcmb "+r.status},502);x=await r.text()}catch(e){return json({error:"tcmb"},502)}
+let KUR=null,KURERR=0;
+async function kur(){if(KUR&&Date.now()-KUR.ts<3*3600e3)return json(KUR.d);if(Date.now()-KURERR<300e3)return json({error:"tcmb"},502);
+  let x="";try{const r=await fetch("https://www.tcmb.gov.tr/kurlar/today.xml",{signal:AbortSignal.timeout(5000)});if(!r.ok){KURERR=Date.now();return json({error:"tcmb "+r.status},502)}x=await r.text()}catch(e){KURERR=Date.now();return json({error:"tcmb"},502)}
   const d={date:(x.match(/Date="([^"]+)"/)||[])[1]||null,src:"TCMB"};for(const c of ["EUR","USD","GBP"]){const m=x.match(new RegExp('CurrencyCode="'+c+'"[\\s\\S]*?<ForexBuying>([\\d.]+)</ForexBuying>[\\s\\S]*?<ForexSelling>([\\d.]+)</ForexSelling>'));if(m)d[c]={buy:+m[1],sell:+m[2]}}
   if(d.EUR)KUR={ts:Date.now(),d};return json(d)}
 Deno.serve(async req=>{
