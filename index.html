@@ -68,6 +68,7 @@ let user=null,co=null,ROLE="owner";
 const REC=typeof location!="undefined"&&/type=recovery/.test(location.hash);
 const INV=(()=>{try{const m=location.search.match(/[?&]davet=([A-Za-z0-9]{8})/);if(m){localStorage.setItem("ft_invite",m[1].toUpperCase());history.replaceState(null,"",location.pathname+location.hash)}return localStorage.getItem("ft_invite")||""}catch(e){return ""}})();
 
+(()=>{try{if(!/[?&]sofor=/.test(location.search)&&(window.navigator.standalone||matchMedia("(display-mode: standalone)").matches)){const t=localStorage.getItem("ft_last_drv"),ow=Object.keys(localStorage).some(k=>/^sb-.*-auth-token$/.test(k));if(t&&!ow)location.replace(location.pathname+"?sofor="+t)}}catch(e){}})();
 const DTOK=(()=>{const m=location.search.match(/[?&]sofor=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);return m?m[1].toLowerCase():""})();
 let DI=null,DMSG="",DSEL=null,DPT=null,DGR=false,DDEN=null;
 function nearGeo(lat,lng){let b=null,bd=1e9;for(const k in GEO){const [a,c]=GEO[k],d=(a-lat)**2+((c-lng)*Math.cos(lat*Math.PI/180))**2;if(d<bd){bd=d;b=k}}return b?{k:b,c:GEO[b],km:Math.round(Math.sqrt(bd)*111)}:null}
@@ -122,8 +123,11 @@ async function driverView(){
   ${J.length?J.map(card).join(""):'<div class="card"><p class="sub">Bugün ve yarın sana atanmış iş yok.</p></div>'}
   <div class="card"><h2>Yakıt aldım</h2>${DI.vehicle?`<p class="sub">${esc(DI.vehicle)} için. Fişin ve km saatinin fotoğrafını çek.</p><div class="f2"><div><label>Litre</label><input id="yl" inputmode="decimal"></div><div><label>Tutar (₺)</label><input id="ya" inputmode="decimal"></div><div><label>Km saati</label><input id="yo" inputmode="numeric"></div></div>
   <label>Fiş fotoğrafı</label><input type="file" id="yf" accept="image/*" capture="environment"><label>Km saati fotoğrafı</label><input type="file" id="yk" accept="image/*" capture="environment"><div class="row"><button onclick="drvFuel(this)">Yakıtı gönder</button></div><p id="ym" class="sub" role="status"></p>`:'<p class="sub">Sana tanımlı araç yok, patronuna söyle.</p>'}</div>
-  <div class="row"><button class="alt" onclick="DMSG='';driverView()">Yenile</button></div><p class="sub">Konumun düğmelere bastığında ve bu sayfa ekranda açıkken 3 dakikada bir alınır; sayfa kapalıyken alınmaz.</p>`;
-  if(!DPT){DPT=setInterval(autoPing,180000);autoPing()}
+  <div class="row"><button class="alt" onclick="DMSG='';driverView()">Yenile</button></div>
+  ${dpushState()=="on"?"":`<div class="card"><h2 style="margin:0 0 4px">Ofis konum isteyince haber gelsin</h2><p class="sub" style="margin:0 0 6px">Ofis gerekirse konumunu ister; telefonuna bildirim gelir, dokununca konumun bir kez gider. Sürekli takip yok, şarjın gitmez.${/iPhone|iPad/.test(navigator.userAgent)&&!(window.navigator.standalone||matchMedia("(display-mode: standalone)").matches)?" iPhone'da önce Safari'de Paylaş → Ana Ekrana Ekle yap, sonra ana ekrandaki simgeden açıp bu düğmeye bas.":""}</p><div class="row"><button onclick="drvPushOn(this)">Bildirimi aç</button></div></div>`}
+  <p class="sub">Konumun yalnızca düğmelere bastığında ve ofis istediğinde bir kez alınır. Sürekli takip yapılmaz.</p>`;
+  if(!DPT){DPT=setInterval(()=>lrCheck(),30000);const f=/[?&]lr=/.test(location.search);if(f){try{history.replaceState(null,"",location.pathname+"?sofor="+DTOK)}catch(e){}}lrCheck(f);document.addEventListener("visibilitychange",()=>{if(!document.hidden)lrCheck()})}
+  try{localStorage.setItem("ft_last_drv",DTOK)}catch(e){}
   if(!DQT)DQT=setInterval(()=>{if(qGet().length)qFlush().then(n=>{if(n&&!DDEN&&!DSEL){DMSG=n+" bekleyen kayıt gönderildi";driverView()}})},30000);
 }
 async function drvWait(id,kind,btn){if(btn)btn.disabled=true;let ph=null;try{if(kind=="noshow"){const f=$("#dnp")&&$("#dnp").files[0];if(!f&&!confirm("Fotoğrafsız bildirilsin mi? Kanıt için fotoğraf önerilir.")){if(btn)btn.disabled=false;return}ph=f?await shrink(f):null}}catch(e){}
@@ -149,6 +153,22 @@ function tabela(id){const j=(DI.jobs||[]).find(x=>x.id==id)||{},ppl=(j.stops||[]
   d.textContent=t.trim().toUpperCase();d.onclick=()=>{d.remove();try{document.exitFullscreen&&document.fullscreenElement&&document.exitFullscreen()}catch(e){}};document.body.appendChild(d);
   try{d.requestFullscreen&&d.requestFullscreen().catch(()=>{})}catch(e){}try{navigator.wakeLock&&navigator.wakeLock.request("screen").catch(()=>{})}catch(e){}}
 function activeJob(){const J=(DI&&DI.jobs||[]).filter(j=>j.job_date==DI.today&&(j.status!="tamamlandi"||((j.events||[]).length&&!(j.events||[]).some(e=>e.kind=="birakti")))),go=J.find(j=>(j.events||[]).some(e=>e.kind=="cikti"||e.kind=="aldi")&&!(j.events||[]).some(e=>e.kind=="birakti"));return go||J.find(j=>!(j.events||[]).some(e=>e.kind=="birakti"))||null}
+let DLRB=false;
+async function lrCheck(force){if(DLRB||document.hidden||!DTOK)return;DLRB=true;try{
+  if(!force){const r=await rpcTry("drv_loc_pending",{p_token:DTOK});if(!r||r.error||!r.data)return}
+  const p=await getPos();if(!p){DMSG="Ofis konumunu istedi ama konum alınamadı. Telefonda konum iznini aç.";if(!DDEN&&!DSEL)driverView();return}
+  const r2=await rpcTry("drv_loc_answer",{p_token:DTOK,p_lat:p.lat,p_lng:p.lng,p_acc:p.acc});if(!r2.error&&r2.data>0){DGR=true;DMSG="Ofis konumunu istedi, gönderildi ("+tHM(new Date().toISOString())+")";if(!DDEN&&!DSEL)driverView()}}catch(e){}finally{DLRB=false}}
+function dpushState(){try{if(!("serviceWorker" in navigator)||!window.PushManager||!window.Notification)return "yok";return Notification.permission=="granted"&&localStorage.getItem("ft_dps_"+DTOK)?"on":"off"}catch(e){return "off"}}
+async function drvPushOn(btn){if(btn)btn.disabled=true;try{
+  if(!("serviceWorker" in navigator)||!window.PushManager||!window.Notification){alert("Bu tarayıcı bildirim desteklemiyor. iPhone'da Safari'de Paylaş → Ana Ekrana Ekle yap, ana ekrandaki simgeden aç.");return}
+  if(Notification.permission=="default")await Notification.requestPermission();if(Notification.permission!="granted"){alert("Bildirim izni verilmedi. Telefon ayarlarından bu siteye bildirim izni ver.");return}
+  try{await navigator.serviceWorker.register("sw.js")}catch(e){}
+  const kr=await fetch(PUSH_FN+"?vapid=1").then(r=>r.json()).catch(()=>null);if(!kr||!kr.key){alert("Sunucuya ulaşılamadı, sonra tekrar dene.");return}
+  const K=b64u(kr.key),rg=await navigator.serviceWorker.ready;let sub=await rg.pushManager.getSubscription();
+  if(sub&&sub.options&&sub.options.applicationServerKey){const a=new Uint8Array(sub.options.applicationServerKey);if(a.length!=K.length||a.some((x,i)=>x!=K[i])){await sub.unsubscribe();sub=null}}
+  if(!sub)sub=await rg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:K});
+  const j=sub.toJSON(),r=await sb.rpc("drv_push_sub",{p_token:DTOK,p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth});if(r.error)throw r.error;
+  try{localStorage.setItem("ft_dps_"+DTOK,"1")}catch(e){}DMSG="Bildirim açık. Ofis konum isteyince telefonuna haber gelecek."}catch(e){alert(errText(e))}finally{driverView()}}
 async function autoPing(){try{if(document.hidden)return;let ok=DGR;if(!ok&&navigator.permissions&&navigator.permissions.query){const s=await navigator.permissions.query({name:"geolocation"});ok=s.state=="granted"}if(!ok)return;
   const p=await getPos();if(!p)return;const j=activeJob();await sb.rpc("drv_ping",{p_token:DTOK,p_job:j?j.id:null,p_kind:"konum",p_min:null,p_note:null,p_lat:p.lat,p_lng:p.lng,p_acc:p.acc})}catch(e){}}
 async function drvStep(id,kind,btn){
@@ -503,14 +523,15 @@ async function delTrip(id){
 }
 let VED=null;
 function editVeh(id){VED=VED==id?null:id;vehTab()}
-function vedForm(v){const ow=ROLE=="owner";return `<div class="f2" style="margin-top:8px"><div><label>Plaka</label><input id="ve_pl" value="${esc(v.plate)}"></div><div><label>Kapasite (kişi)</label><input id="ve_cap" inputmode="numeric" value="${v.capacity||""}"></div><div><label>Bulunduğu yer (şehir/bölge)</label><input id="ve_city" value="${esc(v.home_city||"")}"></div><div><label>Model yılı</label><input id="ve_y" inputmode="numeric" value="${v.model_year||""}"></div>${ow?`<div><label>Aylık sabit gider (₺)</label><input id="ve_fx" inputmode="decimal" value="${v.monthly_fixed_cost||""}"></div><div><label>Ortalama tüketim (L/100 km)</label><input id="ve_bc" inputmode="decimal" value="${v.base_consumption||""}"></div>`:""}</div><div class="row"><button onclick="saveVeh('${v.id}')">Kaydet</button><button class="alt" onclick="editVeh('${v.id}')">Vazgeç</button></div><p id="ve_m" class="sub" role="status"></p>`}
+function vedForm(v){const ow=ROLE=="owner";return `<div class="f2" style="margin-top:8px"><div><label>Plaka</label><input id="ve_pl" value="${esc(v.plate)}"></div><div><label>Kapasite (kişi)</label><input id="ve_cap" inputmode="numeric" value="${v.capacity||""}"></div><div><label>Bulunduğu yer (şehir/bölge)</label><input id="ve_city" value="${esc(v.home_city||"")}"></div><div><label>Model yılı</label><input id="ve_y" inputmode="numeric" value="${v.model_year||""}"></div><div style="grid-column:1/-1"><label>Araç takip bağlantısı (Arvento / Turuncu)</label><input id="ve_tu" inputmode="url" placeholder="https://… (aracın takip sayfasının adresi)" value="${esc(v.tracking_url||"")}"></div>${ow?`<div><label>Aylık sabit gider (₺)</label><input id="ve_fx" inputmode="decimal" value="${v.monthly_fixed_cost||""}"></div><div><label>Ortalama tüketim (L/100 km)</label><input id="ve_bc" inputmode="decimal" value="${v.base_consumption||""}"></div>`:""}</div><div class="row"><button onclick="saveVeh('${v.id}')">Kaydet</button><button class="alt" onclick="editVeh('${v.id}')">Vazgeç</button></div><p id="ve_m" class="sub" role="status"></p>`}
 async function saveVeh(id){
   const m=t=>{const e=$("#ve_m");if(e){e.textContent=t;e.className="sub bad"}},v=VEH.find(x=>x.id==id);if(!v)return;
   let pl=$("#ve_pl").value.trim().toLocaleUpperCase("tr").replace(/\s+/g," ");const pm=pl.replace(/\s/g,"").match(/^(\d{2})([A-ZÇĞİÖŞÜ]{1,3})(\d{2,5})$/);if(pm)pl=pm[1]+" "+pm[2]+" "+pm[3];
   if(!pl){m("Plakayı yaz.");return}if(VEH.some(x=>x.id!=id&&x.plate.replace(/\s/g,"")==pl.replace(/\s/g,""))){m("Bu plaka başka araçta kayıtlı.");return}
   const cap=$("#ve_cap").value.trim()===""?null:num($("#ve_cap").value),y=$("#ve_y").value.trim()===""?null:num($("#ve_y").value);
   if(cap!=null&&(cap<1||cap>100||!Number.isInteger(cap))){m("Kapasite 1 ile 100 arasında tam sayı olmalı.");return}if(y!=null&&(y<1980||y>new Date().getFullYear()+1)){m("Model yılını kontrol et.");return}
-  const up={plate:pl,capacity:cap,home_city:$("#ve_city").value.trim()||null,model_year:y};
+  const tu=($("#ve_tu")?$("#ve_tu").value.trim():"")||null;if(tu&&!/^https:\/\/\S+$/i.test(tu)){m("Takip bağlantısı https:// ile başlamalı.");return}
+  const up={plate:pl,capacity:cap,home_city:$("#ve_city").value.trim()||null,model_year:y,tracking_url:tu};
   if(ROLE=="owner"){const fx=$("#ve_fx").value.trim()===""?0:num($("#ve_fx").value),bc=$("#ve_bc").value.trim()===""?null:num($("#ve_bc").value);if(fx==null||fx<0){m("Sabit gideri kontrol et.");return}if(bc!=null&&(bc<3||bc>60)){m("Tüketim 3 ile 60 arasında olmalı.");return}up.monthly_fixed_cost=fx;up.base_consumption=bc}
   const r=await sb.from("vehicles").update(up).eq("id",id);if(r.error){m(errText(r.error));return}VED=null;await vehiclesView("v")}
 async function vehTab(){
@@ -657,7 +678,7 @@ async function applyRescue(jid,wid,kid,uid){
   const w=VEH.find(x=>x.id==wid),u=VEH.find(x=>x.id==uid);if(!confirm(uid?`İş ${w.plate} aracına, bu aracın sonraki işi ${u.plate} aracına verilsin mi? Şoförlere yeni işlerini göndermeyi unutma.`:`İş ${w.plate} aracına verilsin mi? Şoföre yeni işini göndermeyi unutma.`))return;
   const up=async(id,v)=>{const x={vehicle_id:v.id,driver_id:v.default_driver_id||null};const r=await sb.from("jobs").update(x).eq("id",id);if(r.error)throw r.error};
   try{if(kid&&u)await up(kid,u);await up(jid,w);say((w.default_driver_id&&(!u||u.default_driver_id))?"Araç ve şoför değiştirildi. Şoföre yeni işini gönder.":"Araç değiştirildi; sabit şoförü olmayan araç için şoförü İşler sekmesinden seç.");await vehiclesView();watchTick()}catch(e){alert(errText(e))}}
-const VCOLS="id,company_id,plate,base_consumption,home_city,odometer_km,next_service_km,active,created_at,default_driver_id,capacity,vehicle_class,model_year";
+const VCOLS="id,company_id,plate,base_consumption,home_city,odometer_km,next_service_km,active,created_at,default_driver_id,capacity,vehicle_class,model_year,tracking_url";
 const JCOLS="id,company_id,job_date,from_city,to_city,agency_id,vehicle_id,distance_km,status,source,notes,created_at,pickup_time,job_type,vehicle_type,driver_id,guest_name,pax,currency,collection_mode,invoiced,partner_agency_id,collected_at,flight_no,flight_time,run_code,guide_name,import_key,end_time,price_set_by,price_set_email,price_set_at,service_mode,eta_landing,uetds_status,uetds_ref,uetds_at";
 async function addMoney(rows){if(!rows||!rows.length)return rows;const ids=rows.map(x=>x.id),M={};
   for(let i=0;i<ids.length;i+=150){const r=await sb.from("job_money").select("id,priced,amount,partner_share,collected_amount").in("id",ids.slice(i,i+150));if(!r.error)(r.data||[]).forEach(x=>M[x.id]=x)}
@@ -1052,16 +1073,17 @@ function loadLeaflet(){if(window.L)return Promise.resolve(true);if(window.__LLP)
     const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";s.onload=()=>res(!!window.L);s.onerror=()=>{window.__LLP=null;res(false)};document.head.appendChild(s);setTimeout(()=>res(!!window.L),8000)});return window.__LLP}
 const agoTxt=m=>m<1?"şimdi":m<60?m+" dk önce":Math.floor(m/60)+" sa "+(m%60)+" dk önce";
 async function mapTab(){const g0=GEN;LMAP=null;MAPFIT=false;
-  $("#tab").innerHTML=`<div class="card"><h2>Kaptan konumları</h2><p class="sub">Şoför sayfası telefonda açıkken 3 dakikada bir ve her düğmede konum gelir. Sayfa kapalıysa son bilinen yer görünür. Bu ekran dakikada bir yenilenir.</p><div id="lmap" style="height:58vh;min-height:300px;border-radius:12px;overflow:hidden;background:#1c2530"></div><p class="sub" id="lmsg" style="margin:6px 0 0"></p></div><div id="llist"></div>`;
+  $("#tab").innerHTML=`<div class="card"><h2>Kaptan konumları</h2><p class="sub">Konum şoför düğmeye bastığında ve sen istediğinde bir kez gelir; sürekli takip yok, şoförün şarjı gitmez. Canlı iz için aracın satırındaki Takip bağlantısıyla Arvento/Turuncu'ya geç.</p><div class="row"><button onclick="locReq(null,this)">Hepsinden konum iste</button></div><div id="lmap" style="height:58vh;min-height:300px;border-radius:12px;overflow:hidden;background:#1c2530"></div><p class="sub" id="lmsg" style="margin:6px 0 0"></p></div><div id="llist"></div>`;
   const ok=await loadLeaflet();if(g0!==GEN||TAB!="h")return;
   if(ok&&$("#lmap")){LMAP=L.map("lmap",{zoomControl:true}).setView([37.05,27.42],11);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap"}).addTo(LMAP);LLAY=L.layerGroup().addTo(LMAP)}
   else{const m=$("#lmap");if(m)m.outerHTML='<p class="sub warn" id="lmap0">Harita yüklenemedi (internet?). Aşağıdaki listede konum bağlantıları var.</p>'}
-  await mapRefresh(g0);if(MAPT)clearInterval(MAPT);MAPT=setInterval(()=>{if(TAB!="h"||!$("#llist")){clearInterval(MAPT);MAPT=null;return}if(!document.hidden)mapRefresh(GEN)},60000)}
+  await mapRefresh(g0);if(MAPT)clearInterval(MAPT);MAPT=setInterval(()=>{if(TAB!="h"||!$("#llist")){clearInterval(MAPT);MAPT=null;return}if(!document.hidden)mapRefresh(GEN)},120000)}
 async function mapRefresh(g0){const d=today(),since=new Date(Date.now()-14*3600e3).toISOString();
   const [jr,pr,er,wr]=await Promise.all([sb.from("jobs").select("id,job_date,pickup_time,job_type,from_city,to_city,pax,status,vehicle_id,driver_id,flight_time,eta_landing,run_code,job_stops(seq,place,region,pickup_time)").eq("company_id",co.id).eq("job_date",d).limit(1000),
     sb.from("driver_pings").select("driver_id,job_id,kind,minutes,lat,lng,at").eq("company_id",co.id).gte("at",since).order("at").limit(5000),
     sb.from("job_events").select("job_id,driver_id,kind,lat,lng,at").eq("company_id",co.id).gte("at",since).order("at").limit(5000),
-    sb.from("job_waits").select("job_id,driver_id,kind,started_at,ended_at,lat,lng").eq("company_id",co.id).gte("started_at",since).limit(2000)]);
+    sb.from("job_waits").select("job_id,driver_id,kind,started_at,ended_at,lat,lng").eq("company_id",co.id).gte("started_at",since).limit(2000),
+    sb.from("loc_requests").select("id,driver_id,requested_at,pushed_at,answered_at").eq("company_id",co.id).gte("requested_at",new Date(Date.now()-15*6e4).toISOString()).limit(500)]).then(a=>{const q=a.pop();if(q&&!q.error){const keep={};LRQ.forEach(x=>keep[x.id]=x.nosub);LRQ=(q.data||[]).map(x=>Object.assign(x,keep[x.id]?{nosub:1}:{}))}return a});
   if(g0!==GEN||TAB!="h")return;const el=$("#llist");if(!el)return;
   if(jr.error||pr.error||er.error){el.innerHTML=`<p class="bad">${esc(errText(jr.error||pr.error||er.error))}</p>`;return}
   const J=jr.data||[],P=pr.data||[],E=er.data||[],W=wr.error?[]:wr.data||[],now=Date.now(),nm=new Date().getHours()*60+new Date().getMinutes();
@@ -1084,8 +1106,18 @@ async function mapRefresh(g0){const d=today(),since=new Date(Date.now()-14*3600e
       const tj=r.cur&&!evOf2(E,r.cur).includes("aldi")?r.cur:r.cur?null:r.nxt,tl=tj?jStart(tj):null;
       if(tl&&tl.c){L.polyline([ll,tl.c],{color:"#4aa3df",weight:2,dashArray:"5 6",opacity:.8}).addTo(LLAY);L.circleMarker(tl.c,{radius:6,color:"#4aa3df",fillOpacity:.9}).addTo(LLAY).bindPopup(`${esc(r.dr.name)} alış: ${fM(jP(tj))} ${esc(tl.k||"")}`)}});
     if(!MAPFIT&&B.length){MAPFIT=true;if(B.length==1)LMAP.setView(B[0],13);else LMAP.fitBounds(B,{padding:[40,40],maxZoom:14})}}
-  const lm=$("#lmsg");if(lm)lm.textContent=rows.some(r=>r.last)?`Son yenileme ${new Date().toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})} · yeşil: son 5 dk, sarı: 20 dk içinde, gri: daha eski`:"Bugün henüz konum gelmedi. Şoförlerin bağlantılarını açık tutmaları gerekiyor.";
-  el.innerHTML=rows.length?`<div class="card"><h2>Kaptanlar</h2>${rows.map(r=>`<div class="pl"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col(r.age)};margin-right:6px"></span><b>${esc(r.dr.name||"?")}</b>${r.veh?" · "+esc(r.veh.plate):""} · <span class="${r.cls}">${esc(r.st)}</span><br><span class="k">${r.last?`konum ${agoTxt(r.age)} (${esc(r.last.src)}) · <a href="https://maps.google.com/?q=${r.last.lat},${r.last.lng}" target="_blank" rel="noopener">haritada aç</a>`:"konum yok"}${r.cur?` · şu an ${h5(r.cur.pickup_time)} ${esc(r.cur.from_city||"")} → ${esc(r.cur.to_city||"")}`:""}${r.nxt?` · sıradaki ${fM(jP(r.nxt))} ${esc(r.nxt.from_city||"")}`:""}</span></div>`).join("")}</div>`:'<div class="card"><p class="sub">Bugün işi ya da konumu olan kaptan yok.</p></div>'}
+  const lm=$("#lmsg");if(lm)lm.textContent=rows.some(r=>r.last)?`Son yenileme ${new Date().toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})} · yeşil: son 5 dk, sarı: 20 dk içinde, gri: daha eski`:"Bugün henüz konum gelmedi. Şoför düğmelere bastıkça gelir; hemen görmek için Konum iste'ye bas.";
+  const LQ=LRQ.filter(q=>Date.now()-new Date(q.requested_at)<15*6e4);
+  el.innerHTML=rows.length?`<div class="card"><h2>Kaptanlar</h2>${rows.map(r=>{const q=LQ.filter(x=>x.driver_id==r.id).sort((a,b)=>a.requested_at<b.requested_at?1:-1)[0],qs=q?q.answered_at?`<span class="ok">konum geldi ${tHM(q.answered_at)}</span>`:`<span class="warn">istendi ${tHM(q.requested_at)}${q.pushed_at?", bildirim gitti":(q.nosub?", bildirimi kapalı – telefonla ara":"")} · bekleniyor</span>`:"";
+    return `<div class="pl"><div style="display:flex;gap:8px;justify-content:space-between;align-items:flex-start"><div style="flex:1;min-width:0"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col(r.age)};margin-right:6px"></span><b>${esc(r.dr.name||"?")}</b>${r.veh?" · "+esc(r.veh.plate):""} · <span class="${r.cls}">${esc(r.st)}</span><br><span class="k">${r.last?`konum ${agoTxt(r.age)} (${esc(r.last.src)}) · <a href="https://maps.google.com/?q=${r.last.lat},${r.last.lng}" target="_blank" rel="noopener">haritada aç</a>`:"konum yok"}${r.cur?` · şu an ${h5(r.cur.pickup_time)} ${esc(r.cur.from_city||"")} → ${esc(r.cur.to_city||"")}`:""}${r.nxt?` · sıradaki ${fM(jP(r.nxt))} ${esc(r.nxt.from_city||"")}`:""}</span>${qs?"<br>"+qs:""}</div><div style="display:flex;flex-direction:column;gap:4px"><button class="x n" onclick="locReq('${r.id}',this)">Konum iste</button>${r.veh&&r.veh.tracking_url?`<a class="x n" style="text-align:center" href="${esc(r.veh.tracking_url)}" target="_blank" rel="noopener">Takip</a>`:""}</div></div></div>`}).join("")}</div>`:'<div class="card"><p class="sub">Bugün işi ya da konumu olan kaptan yok.</p></div>'}
+let LRQ=[],LRT=null;
+async function locReq(did,btn){if(btn)btn.disabled=true;const ids=did?[did]:[...new Set(DRV.filter(d=>d.active!==false).map(d=>d.id))];
+  const r=await sb.from("loc_requests").insert(ids.map(id=>({company_id:co.id,driver_id:id}))).select("id,driver_id,requested_at,pushed_at,answered_at");
+  if(r.error){alert(errText(r.error));if(btn)btn.disabled=false;return}
+  let pr=null;try{pr=await fetch(PUSH_FN+"?lr=1").then(x=>x.json())}catch(e){}
+  const ns=new Set((pr&&pr.nosub)||[]);(r.data||[]).forEach(q=>{if(ns.has(q.driver_id))q.nosub=1;if(pr&&(pr.sent||[]).includes(q.id))q.pushed_at=new Date().toISOString()});
+  LRQ=LRQ.concat(r.data||[]);say(ids.length>1?ids.length+" şoförden konum istendi":"Konum istendi");mapRefresh(GEN);
+  if(LRT)clearInterval(LRT);let n=0;LRT=setInterval(()=>{n++;if(TAB!="h"||!$("#llist")||n>24||!LRQ.some(q=>!q.answered_at&&Date.now()-new Date(q.requested_at)<15*6e4)){clearInterval(LRT);LRT=null;return}mapRefresh(GEN)},10000)}
 const evOf2=(E,j)=>E.filter(e=>e.job_id==j.id).map(e=>e.kind);
 async function planTab(){
   const g0=GEN;PD=PD||today();

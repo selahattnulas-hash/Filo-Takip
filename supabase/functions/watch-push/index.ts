@@ -170,6 +170,19 @@ async function digest(co,subs,day,now){
     body=`Bugün ${T.length} iş: tamamlanmayan ${T.filter(j=>j.status!="tamamlandi").length}, fiyatsız ${T.filter(j=>!Number(j.amount)&&j.agency_id).length}${UETDS_ON?", U-ETDS işaretsiz "+T.filter(j=>j.vehicle_id&&j.uetds_status!="bildirildi").length:""}.\nYarın ${N.length} iş, araç atanmamış ${N.filter(j=>!j.vehicle_id).length}.`}
   const ins=await SB.from("digests").insert({company_id:co,kind,day,body,sent:0});if(ins.error)return null;
   const sent=await push(os,{title,body,tag:"digest-"+kind+"-"+day});await SB.from("digests").update({sent}).eq("company_id",co).eq("kind",kind).eq("day",day);return{kind,sent}}
+async function locPush(){const since=new Date(Date.now()-120e3).toISOString();
+  const q=await SB.from("loc_requests").select("id,company_id,driver_id,requested_at").is("pushed_at",null).is("answered_at",null).gte("requested_at",since).limit(200);
+  const L=q.data||[];if(!L.length)return{sent:[],nosub:[]};await keys();const ds=[...new Set(L.map(x=>x.driver_id))];
+  const [sr,lr,rec]=await Promise.all([SB.from("driver_push_subs").select("*").in("driver_id",ds),SB.from("driver_links").select("driver_id,token").in("driver_id",ds).eq("active",true),
+    SB.from("loc_requests").select("driver_id").in("driver_id",ds).gte("pushed_at",new Date(Date.now()-60e3).toISOString())]);
+  const recent=new Set((rec.data||[]).map(x=>x.driver_id)),sent=[],nosub=[],done=new Set();
+  for(const r of L){const subs=(sr.data||[]).filter(x=>x.driver_id==r.driver_id),tk=(lr.data||[]).find(x=>x.driver_id==r.driver_id);
+    if(!subs.length||!tk){if(!nosub.includes(r.driver_id))nosub.push(r.driver_id);continue}
+    if(!recent.has(r.driver_id)&&!done.has(r.driver_id)){done.add(r.driver_id);
+      for(const x of subs){try{await webpush.sendNotification({endpoint:x.endpoint,keys:{p256dh:x.p256dh,auth:x.auth}},JSON.stringify({title:"Ofis konumunu istiyor",body:"Dokun, konumun bir kez gönderilsin.",tag:"lr",url:"./?sofor="+tk.token+"&lr=1"}),{TTL:900,urgency:"high"});await SB.from("driver_push_subs").update({last_ok:new Date().toISOString()}).eq("id",x.id)}
+        catch(e){const c=e&&e.statusCode;if(c==404||c==410)await SB.from("driver_push_subs").delete().eq("id",x.id)}}}
+    await SB.from("loc_requests").update({pushed_at:new Date().toISOString()}).eq("id",r.id);sent.push(r.id)}
+  return{sent,nosub}}
 let KUR=null;
 async function kur(){if(KUR&&Date.now()-KUR.ts<3*3600e3)return json(KUR.d);
   let x="";try{const r=await fetch("https://www.tcmb.gov.tr/kurlar/today.xml");if(!r.ok)return json({error:"tcmb "+r.status},502);x=await r.text()}catch(e){return json({error:"tcmb"},502)}
@@ -177,8 +190,8 @@ async function kur(){if(KUR&&Date.now()-KUR.ts<3*3600e3)return json(KUR.d);
   if(d.EUR)KUR={ts:Date.now(),d};return json(d)}
 Deno.serve(async req=>{
   if(req.method=="OPTIONS")return new Response(null,{headers:CORS});
-  const u=new URL(req.url);if(u.searchParams.get("vapid"))return json({key:(await keys()).vapid_public});if(u.searchParams.get("ack"))return ack(u);if(u.searchParams.get("kur"))return kur();
+  const u=new URL(req.url);if(u.searchParams.get("vapid"))return json({key:(await keys()).vapid_public});if(u.searchParams.get("ack"))return ack(u);if(u.searchParams.get("kur"))return kur();if(u.searchParams.get("lr"))return json(await locPush());
   const cs=await SB.from("app_secrets").select("value").eq("name","cron").maybeSingle();if(!cs.data||req.headers.get("x-cron-secret")!==cs.data.value)return json({error:"forbidden"},403);await keys();
   const subs=(await SB.from("push_subs").select("id,company_id,endpoint,p256dh,auth,user_id")).data||[],by={};subs.forEach(s=>(by[s.company_id]=by[s.company_id]||[]).push(s));
-  const day=istDate(),now=istMin(),out=[];for(const co in by){try{out.push(await runCompany(co,by[co],day,now));const dg=await digest(co,by[co],day,now);if(dg)out.push(dg)}catch(e){out.push({co,error:String(e)})}}
+  try{await locPush()}catch(e){}const day=istDate(),now=istMin(),out=[];for(const co in by){try{out.push(await runCompany(co,by[co],day,now));const dg=await digest(co,by[co],day,now);if(dg)out.push(dg)}catch(e){out.push({co,error:String(e)})}}
   return json({day,now,out})});
