@@ -90,7 +90,7 @@ async function drvCall(fn,a){const r=await rpcTry(fn,a);if(!r.error||!isNet(r.er
   if(!qSet(q)){const b=Object.assign({},a);["p_photo","p_receipt","p_odo_photo"].forEach(k=>{if(b[k])b[k]=null});it.a=b;it.nophoto=true;if(!qSet(q))return{error:{message:"Sinyal yok ve telefonda yer yok; sinyal gelince tekrar bas"}}}
   return{queued:true,data:null}}
 async function qFlush(){if(DQBUSY)return 0;const q=qGet();if(!q.length)return 0;DQBUSY=true;let n=0,i=0;
-  try{for(;i<q.length;i++){const it=q[i],r=await rpcTry(it.fn,it.a);if(r.error&&isNet(r.error))break;n++}
+  try{for(;i<q.length;i++){const it=q[i],a=Object.assign({},it.a);if(/^drv_(event|ping|wait)$/.test(it.fn)&&a.p_kind!="konum")a.p_at=it.at;const r=await rpcTry(it.fn,a);if(r.error&&isNet(r.error))break;n++}
     const rest=qGet().slice(i);qSet(rest)}finally{DQBUSY=false}return n}
 function qOverlay(){const q=qGet();if(!DI)return q.length;for(const it of q){const j=(DI.jobs||[]).find(x=>x.id==it.a.p_job);if(!j)continue;
   if(it.fn=="drv_event"){j.events=(j.events||[]).concat([{kind:it.a.p_kind,at:it.at,pending:1}])}
