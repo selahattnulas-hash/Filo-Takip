@@ -51,6 +51,14 @@ a.lk{color:var(--ac);font-weight:700;text-decoration:none;min-height:38px;paddin
 <body><div id="st" class="st" role="status" aria-live="polite"></div><main id="app"><p class="sub">Yükleniyor…</p></main>
 <script>
 const sb=supabase.createClient("https://itsdtgvicgynymjrdhgn.supabase.co","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0c2R0Z3ZpY2d5bnltanJkaGduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQzMzgzODYsImV4cCI6MjEwOTkxNDM4Nn0.Ijcs7mARscVWeesvVeyfBL9UIyfa9ddqL094k55iaKE");
+// ---------- sürüm denetimi ve hata kaydı
+const APPV="2026-11-16.2";let ERRN=0;
+function logErr(m,src){if(ERRN++>=5)return;try{let c="";try{c=DTOK?"sofor":""}catch(e){}try{if(!c)c=(ROLE||"")+"/"+(TAB||"")}catch(e){}
+  sb.rpc("log_client_error",{p_msg:String(m||"").slice(0,500),p_src:String(src||"").slice(0,200),p_ver:APPV,p_ctx:c,p_ua:navigator.userAgent.slice(0,200)}).then(()=>{},()=>{})}catch(e){}}
+if(typeof window!="undefined"){window.addEventListener("error",e=>logErr(e.message,(e.filename||"").split("/").pop()+":"+e.lineno+":"+e.colno));
+  window.addEventListener("unhandledrejection",e=>{const r=e.reason;logErr("promise: "+(r&&(r.message||r)),r&&r.stack?String(r.stack).split("\n")[1]||"":"")});
+  const vchk=async()=>{try{if(document.hidden||document.getElementById("newver"))return;const r=await fetch("version.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;const d=await r.json();if(d&&d.v&&d.v!=APPV){const b=document.createElement("div");b.id="newver";b.style.cssText="position:fixed;left:8px;right:8px;bottom:8px;z-index:9000;background:#1f6f5c;color:#fff;padding:10px 12px;border-radius:12px;display:flex;gap:10px;align-items:center;justify-content:space-between;font:600 14px system-ui,sans-serif;box-shadow:0 4px 16px #0008";b.innerHTML='<span>Yeni sürüm hazır.</span><button style="width:auto;margin:0;background:#fff;color:#1f6f5c;padding:6px 14px">Yenile</button>';b.querySelector("button").onclick=()=>location.reload();document.body.appendChild(b)}}catch(e){}};
+  setTimeout(vchk,20000);setInterval(vchk,300000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)vchk()})}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num=v=>{let s=String(v==null?"":v).trim().replace(/\s(?=\d)/g,"");const m=s.match(/^-?\d[\d.,]*/);if(!m)return null;s=m[0].replace(/[.,]+$/,"");
@@ -263,7 +271,7 @@ async function makeCompany(){
   ROLE="owner";co={id:c.data.id,name:c.data.name};await vehiclesView();
 }
 
-let TAB=(typeof location!="undefined"&&location.hash.length==2&&"opjsctv".includes(location.hash[1])&&location.hash[1])||"o",VEH=[],DRV=[],AGN=[];
+let TAB=(typeof location!="undefined"&&location.hash.length==2&&"ohpjsctv".includes(location.hash[1])&&location.hash[1])||"o",VEH=[],DRV=[],AGN=[];
 const sum=(a,k)=>a.reduce((s,x)=>s+Number(x[k]||0),0),fm=n=>Math.round(n).toLocaleString("tr-TR")+" ₺";
 async function vehiclesView(t){
   const g=++GEN,sy=(!t||t===TAB)&&typeof scrollY=="number"?scrollY:0;
