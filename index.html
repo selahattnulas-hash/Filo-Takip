@@ -52,7 +52,7 @@ a.lk{color:var(--ac);font-weight:700;text-decoration:none;min-height:38px;paddin
 <script>
 const sb=supabase.createClient("https://itsdtgvicgynymjrdhgn.supabase.co","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml0c2R0Z3ZpY2d5bnltanJkaGduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQzMzgzODYsImV4cCI6MjEwOTkxNDM4Nn0.Ijcs7mARscVWeesvVeyfBL9UIyfa9ddqL094k55iaKE");
 // ---------- sürüm denetimi ve hata kaydı
-const APPV="2026-11-16.4";let ERRN=0;
+const APPV="2026-11-18.1";let ERRN=0;
 function logErr(m,src){if(ERRN++>=5)return;try{let c="";try{c=DTOK?"sofor":""}catch(e){}try{if(!c)c=(ROLE||"")+"/"+(TAB||"")}catch(e){}
   sb.rpc("log_client_error",{p_msg:String(m||"").slice(0,500),p_src:String(src||"").slice(0,200),p_ver:APPV,p_ctx:c,p_ua:navigator.userAgent.slice(0,200)}).then(()=>{},()=>{})}catch(e){}}
 if(typeof window!="undefined"){window.addEventListener("error",e=>logErr(e.message,(e.filename||"").split("/").pop()+":"+e.lineno+":"+e.colno));
@@ -1076,7 +1076,10 @@ function lastBtn(j){const L=[];(EV[j.id]||[]).forEach(e=>{const n={cikti:"yola �
   JW.filter(x=>x.job_id==j.id).forEach(x=>L.push({t:x.started_at,s:x.kind=="noshow"?"yolcu gelmedi":"bekliyor",b:x.kind=="noshow"}));
   DP.filter(x=>x.job_id==j.id&&x.kind!="konum").forEach(x=>L.push({t:x.at,s:x.kind=="gecikme"?(x.minutes||"?")+" dk gecikecek":"sorun bildirdi",b:1}));
   L.sort((a,b)=>new Date(a.t)-new Date(b.t));return L.pop()||null}
-function nextView(){const e=$("#nxt");if(!e)return;const now=nowMin(),L=nextCalc(NXJ,now),pv={},dn={};VEH.forEach(v=>pv[v.id]=v.plate);DRV.forEach(d=>dn[d.id]=d.name);
+let NXT2={d:null,J:[]};
+function nextView(){const e=$("#nxt");if(!e)return;const now=nowMin(),tm=today(new Date(Date.now()+864e5));
+  if(now>=1320&&NXT2.d!=tm&&!NXT2.busy){NXT2.busy=1;sb.from("jobs").select(JCOLS+", job_stops(seq,place,region,pickup_time)").eq("company_id",co.id).eq("job_date",tm).limit(200).then(r=>{NXT2={d:tm,J:r.error?[]:r.data||[]};nextView()},()=>{NXT2.busy=0})}
+  const L=nextCalc(NXJ,now).concat(now>=1320&&NXT2.d==tm?NXT2.J.filter(j=>j.status!="tamamlandi"&&j.status!="iptal"&&jP(j)!=null).map(j=>({j,p:jP(j)+1440})).filter(x=>x.p<=now+120):[]).sort((a,b)=>a.p-b.p),pv={},dn={};VEH.forEach(v=>pv[v.id]=v.plate);DRV.forEach(d=>dn[d.id]=d.name);
   const nv=L.filter(x=>!x.j.vehicle_id).length,later=(NXJ||[]).filter(j=>j.status!="tamamlandi"&&j.status!="iptal").map(jP).filter(p=>p!=null&&p>now+120).sort((a,b)=>a-b)[0];
   e.innerHTML=`<div class="card"><h2>Sıradaki 2 saat${L.length?" · "+L.length+" iş":""}${nv?` · <span class="neg">${nv} araçsız</span>`:""}</h2>${L.length?L.map(x=>{const j=x.j,b=lastBtn(j),dk=x.p-now;
     return `<div class="pl"${j.vehicle_id?"":' style="border-left:3px solid var(--bad);padding-left:8px"'}><b>${fM(x.p)}</b> <span class="k">${dk<1?"şimdi":dk+" dk sonra"}${j.job_type=="varis"&&(j.eta_landing||j.flight_time)?" · iniş "+h5(j.eta_landing||j.flight_time):""}</span> · ${TLN[j.job_type]||"İş"}<br>${esc(j.from_city||"?")} → ${esc(j.to_city||"?")}<br><span class="k">${j.vehicle_id?esc(pv[j.vehicle_id]||"?"):'<span class="neg">araç yok</span>'} · ${j.driver_id?esc(dn[j.driver_id]||"?"):'<span class="warn">şoför yok</span>'} · ${b?`son düğme: <span class="${b.b?"neg":""}">${esc(b.s)} ${tHM(b.t)}</span>`:"şoför henüz düğmeye basmadı"}</span></div>`}).join(""):`<p class="sub" style="margin:0">Önümüzdeki 2 saatte alış yok.${later!=null?" Sıradaki iş "+fM(later)+".":""}</p>`}</div>`}
@@ -1460,7 +1463,7 @@ async function uetdsAll(){if(!confirm("Bu günün araç atanmış ve henüz işa
   const r=await sb.from("jobs").update({uetds_status:"bildirildi",uetds_at:new Date().toISOString()}).eq("company_id",co.id).eq("job_date",PD).not("vehicle_id","is",null).neq("status","tamamlandi").or("uetds_status.is.null,uetds_status.eq.guncelle");if(r.error){alert(errText(r.error));return}say("Günün işleri U-ETDS bildirildi olarak işaretlendi");await vehiclesView("o")}
 async function uetdsToggle(on){const r=await sb.from("companies").update({uetds_alerts:on}).eq("id",co.id);if(r.error){alert(errText(r.error));return}co.uetds=on;UETDS_ON=on;say(on?"U-ETDS hatırlatmaları açık":"U-ETDS hatırlatmaları kapalı");watchTick()}
 const WATCHJS=()=>(WATCH||[]).map(x=>x.j);
-function etaAsk(id){const j=(JOBS||[]).find(x=>x.id==id)||WATCHJS().find(x=>x.id==id)||{};const t=prompt("Tahmini iniş saati (ör. 14:35). Silmek için boş bırak.",j.eta_landing?String(j.eta_landing).slice(0,5):"");if(t==null)return;const v=t.trim();if(v&&!/^\d{1,2}[:.]\d{2}$/.test(v)){alert("Saati 14:35 gibi yaz.");return}const n=v?v.replace(".",":").padStart(5,"0"):"";if(j.id)j.eta_landing=n||null;chgMark(id);setEta(id,n)}
+function etaAsk(id){const j=(JOBS||[]).find(x=>x.id==id)||WATCHJS().find(x=>x.id==id)||{};const t=prompt("Tahmini iniş saati (ör. 14:35). Silmek için boş bırak.",j.eta_landing?String(j.eta_landing).slice(0,5):"");if(t==null)return;const v=t.trim();if(v&&!/^([01]?\d|2[0-3])[:.][0-5]\d$/.test(v)){alert("Saati 14:35 gibi yaz (00:00–23:59).");return}const n=v?v.replace(".",":").padStart(5,"0"):"";if(j.id)j.eta_landing=n||null;chgMark(id);setEta(id,n)}
 function askDrv(jid,k){const j=WATCHJS().find(x=>x.id==jid)||(JOBS||[]).find(x=>x.id==jid);if(!j)return;const d=DRV.find(x=>x.id==j.driver_id)||{};
   const w={cikmadi:"yola çıktın mı?",isaretyok:"neredesin, müşteriyi aldın mı?",gec:"ne zaman varırsın?",zincir:"önceki iş ne zaman biter, buraya ne zaman varırsın?",almadi:"müşteriyi aldın mı?",birakmadi:"müşteriyi bıraktın mı?",bekleme:"yolcu geldi mi?",gecikme:"şu an neredesin, ne zaman varırsın?"}[k]||"durum nedir?";
   const t=`Merhaba ${d.name||""}, saat ${fM(jP(j))} ${j.from_city||""} → ${j.to_city||""} işi: ${w} Konumunu da atar mısın?`;let p=d.phone?String(d.phone).replace(/\D/g,""):"";if(/^0?5\d{9}$/.test(p))p="90"+p.replace(/^0/,"");window.open("https://wa.me/"+p+"?text="+encodeURIComponent(t),"_blank")}
@@ -1480,10 +1483,16 @@ function chgSend(id){const j=CHGJ.find(x=>x.id==id);if(!j)return;const d=DRV.fin
 function jobEdit(id){const e=$("#je_"+id);if(!e)return;if(e.innerHTML){e.innerHTML="";return}const j=JOBS.find(x=>x.id==id);if(!j)return;
   e.innerHTML=`<div class="f2" style="margin-top:6px"><div><label>Alış saati</label><input id="je_t_${id}" type="time" value="${h5(j.pickup_time)}"></div><div><label>Kişi</label><input id="je_p_${id}" inputmode="numeric" value="${j.pax||""}"></div><div><label>Nereden</label><input id="je_f_${id}" value="${esc(j.from_city||"")}"></div><div><label>Nereye</label><input id="je_o_${id}" value="${esc(j.to_city||"")}"></div></div><div class="row"><button onclick="jobEditSave('${id}',this)">Değişikliği kaydet</button></div><p class="sub" style="margin:2px 0 0">Bugünkü işse kayıttan sonra Plan'daki "şoföre bildirilmemiş değişiklikler" listesine düşer${j.uetds_status=="bildirildi"?"; U-ETDS güncelle olarak işaretlenir":""}.</p>`}
 async function jobEditSave(id,btn){const j=JOBS.find(x=>x.id==id);if(!j)return;const t=$("#je_t_"+id).value,px=$("#je_p_"+id).value.trim(),pn=px===""?null:num(px),f=$("#je_f_"+id).value.trim(),o=$("#je_o_"+id).value.trim();
-  if(pn!=null&&(!Number.isInteger(pn)||pn<1||pn>100)){alert("Kişi sayısını kontrol et.");return}if(btn)btn.disabled=true;
-  const u={pickup_time:t||null,pax:pn,from_city:f||null,to_city:o||null},st=(j.job_stops||[]);
+  if(px!==""&&(pn==null||!Number.isInteger(pn)||pn<1||pn>100)){alert("Kişi sayısı 1 ile 100 arasında bir sayı olmalı.");return}
+  if(!f||!o){alert("Nereden ve nereye boş bırakılamaz.");return}
+  if(!t&&!(j.job_type=="varis"&&j.flight_time)){alert("Alış saatini yaz.");return}
+  const st=(j.job_stops||[]).slice().sort((a,b)=>a.seq-b.seq),old=mOf(j.pickup_time),nw=mOf(t),dl=old!=null&&nw!=null?nw-old:0;
+  if(st.length>1&&pn&&pn!=j.pax&&!confirm("Bu işin "+st.length+" durağı var; durakların kişi sayıları değişmeyecek. Toplam kişi yine de "+pn+" olarak kaydedilsin mi?"))return;
+  if(btn)btn.disabled=true;
+  const u={pickup_time:t||null,pax:pn,from_city:f,to_city:o};
   const r=await sb.from("jobs").update(u).eq("id",id);if(r.error){alert(errText(r.error));if(btn)btn.disabled=false;return}
-  if(st.length==1&&j.job_type!="varis"&&t&&h5(st[0].pickup_time)!=t)await sb.from("job_stops").update({pickup_time:t}).eq("job_id",id).eq("seq",st[0].seq);
+  if(j.job_type!="varis"&&t){if(st.length==1&&h5(st[0].pickup_time)!=t)await sb.from("job_stops").update({pickup_time:t}).eq("job_id",id).eq("seq",st[0].seq);
+    else if(st.length>1&&dl)for(const x of st){const m=mOf(x.pickup_time);if(m!=null)await sb.from("job_stops").update({pickup_time:fM(m+dl)}).eq("job_id",id).eq("seq",x.seq)}}
   if(st.length==1&&pn&&st[0].pax!=pn)await sb.from("job_stops").update({pax:pn}).eq("job_id",id).eq("seq",st[0].seq);
   if(j.job_date==today())chgMark(id);if(pn&&capW(pn,j.vehicle_id))alert("Dikkat: "+capW(pn,j.vehicle_id));say("İş güncellendi");await vehiclesView("j");watchTick()}
 async function setEta(id,v){const r=await sb.from("jobs").update({eta_landing:v||null}).eq("id",id);if(r.error){alert(errText(r.error));return}const j=JOBS.find(x=>x.id==id);if(j)j.eta_landing=v||null;say(v?"Rötar kaydedildi; canlı takip yeni iniş saatine göre hesaplar":"Rötar silindi");watchTick()}
